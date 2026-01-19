@@ -79,6 +79,35 @@ export default function Home() {
     if (step === 1) {
       setStep(2);
     } else if (step === 2) {
+      const plan = SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType);
+      if (plan) {
+        const errors: string[] = [];
+        Object.entries(plan.limits).forEach(([eventId, limit]: [string, any]) => {
+          if (limit === 0) return;
+
+          const selectedForEvent = selectedDates[eventId] || [];
+          const availableForEvent = availableDates[eventId] || [];
+
+          // If limit is 999 (All), user must select all available dates
+          if (limit >= 999) {
+            if (selectedForEvent.length < availableForEvent.length) {
+              errors.push(`${events.find(e => e.id === eventId)?.name}: Please select all available dates.`);
+            }
+          } else {
+            // For specific limits, ensure exact match
+            const requiredCount = Math.min(limit, availableForEvent.length);
+            if (selectedForEvent.length !== requiredCount) {
+              errors.push(`${events.find(e => e.id === eventId)?.name}: Please select exactly ${requiredCount} ${requiredCount === 1 ? 'day' : 'days'}.`);
+            }
+          }
+        });
+
+        if (errors.length > 0) {
+          alert(`Please complete your selections for the chosen plan:\n\n${errors.join('\n')}`);
+          return;
+        }
+      }
+
       // Capture current selections as Step 2 selections
       setStep2Selections(JSON.parse(JSON.stringify(selectedDates)));
       setStep(3);
