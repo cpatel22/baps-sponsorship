@@ -253,7 +253,7 @@ export default function Home() {
             <h2 className="text-xl font-bold">Step 2: Sponsorship Details</h2>
             <div>
               <label className="label">Sponsorship Type</label>
-              <select name="sponsorshipType" value={formData.sponsorshipType} onChange={handleInputChange} required>
+              <select name="sponsorshipType" value={formData.sponsorshipType} onChange={handleInputChange}>
                 <option value="">Select a plan...</option>
                 {SPONSORSHIP_PLANS.map(plan => (
                   <option key={plan.id} value={plan.id}>{plan.name} - ${plan.price}</option>
@@ -347,7 +347,7 @@ export default function Home() {
                 type="submit"
                 className="btn-primary"
               >
-                Next Step
+                {formData.sponsorshipType ? 'Next Step' : 'Skip & Next Step'}
               </button>
             </div>
           </form>
