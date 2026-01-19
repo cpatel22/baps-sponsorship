@@ -35,8 +35,8 @@ export default function Home() {
 
   const [events, setEvents] = useState<any[]>([]);
   const [availableDates, setAvailableDates] = useState<{ [eventId: string]: string[] }>({});
-  const [selectedDates, setSelectedDates] = useState<{ [eventId: string]: string[] }>({});
   const [step2Selections, setStep2Selections] = useState<{ [eventId: string]: string[] }>({});
+  const [step3Selections, setStep3Selections] = useState<{ [eventId: string]: string[] }>({});
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -69,7 +69,8 @@ export default function Home() {
           });
         }
       }
-      setSelectedDates(newSelections);
+      setStep2Selections(newSelections);
+      setStep3Selections({}); // Also reset step 3 when plan changes
     }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -85,7 +86,7 @@ export default function Home() {
         Object.entries(plan.limits).forEach(([eventId, limit]: [string, any]) => {
           if (limit === 0) return;
 
-          const selectedForEvent = selectedDates[eventId] || [];
+          const selectedForEvent = step2Selections[eventId] || [];
           const availableForEvent = availableDates[eventId] || [];
 
           // If limit is 999 (All), user must select all available dates
@@ -108,60 +109,72 @@ export default function Home() {
         }
       }
 
-      // Capture current selections as Step 2 selections
-      setStep2Selections(JSON.parse(JSON.stringify(selectedDates)));
       setStep(3);
     }
   };
 
   const handleDateClick = (eventId: string, date: Date) => {
     const formattedDate = format(date, 'yyyy-MM-dd');
+
+    // Check if date is locked because selected in other step
+    if (step === 2 && (step3Selections[eventId] || []).includes(formattedDate)) return;
+    if (step === 3 && (step2Selections[eventId] || []).includes(formattedDate)) return;
+
     let limit = 0;
-
-    // 1. Add Plan limits if selected
-    const plan = SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType);
-    if (plan) {
-      limit += (plan.limits as any)[eventId] || 0;
-    }
-
-    // 2. Add Individual limits from Step 3
-    limit += step3Limits[eventId] || 0;
-
-    if (limit === 0) {
-      if (step === 2 && !formData.sponsorshipType) {
-        alert("Please select a sponsorship plan first, or click 'Next Step' for individual selection.");
-      } else if (step === 3 && step3Limits[eventId] === 0) {
-        alert(`Please set a limit for ${events.find(e => e.id === eventId)?.name} first.`);
+    if (step === 2) {
+      const plan = SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType);
+      if (plan) {
+        limit = (plan.limits as any)[eventId] || 0;
       }
-      return;
-    }
 
-    const currentSelected = selectedDates[eventId] || [];
-
-    if (currentSelected.includes(formattedDate)) {
-      // Don't allow deselecting step 2 dates in step 3
-      if (step === 3 && (step2Selections[eventId] || []).includes(formattedDate)) {
+      if (limit === 0 && !formData.sponsorshipType) {
+        alert("Please select a sponsorship plan first, or click 'Next Step' for individual selection.");
         return;
       }
-      setSelectedDates(prev => ({
+    } else {
+      limit = step3Limits[eventId] || 0;
+      if (limit === 0) {
+        alert(`Please set a limit for ${events.find(e => e.id === eventId)?.name} first.`);
+        return;
+      }
+    }
+
+    const setSelections = step === 2 ? setStep2Selections : setStep3Selections;
+    const currentSelections = step === 2 ? (step2Selections[eventId] || []) : (step3Selections[eventId] || []);
+
+    if (currentSelections.includes(formattedDate)) {
+      setSelections(prev => ({
         ...prev,
-        [eventId]: prev[eventId].filter(d => d !== formattedDate)
+        [eventId]: (prev[eventId] || []).filter(d => d !== formattedDate)
       }));
     } else {
-      if (currentSelected.length < limit) {
-        setSelectedDates(prev => ({
+      if (currentSelections.length < limit) {
+        setSelections(prev => ({
           ...prev,
           [eventId]: [...(prev[eventId] || []), formattedDate]
         }));
       } else {
-        alert(`You have reached the limit of ${limit} days for ${events.find(e => e.id === eventId)?.name}.`);
+        const type = step === 2 ? "plan limit" : "additional limit";
+        alert(`You have reached the ${type} of ${limit} days for ${events.find(e => e.id === eventId)?.name}.`);
       }
     }
   };
 
   const handleSubmit = async () => {
     setLoading(true);
-    const result = await registerSponsorship(formData, selectedDates);
+
+    // Merge selections for backend
+    const mergedSelections: { [eventId: string]: string[] } = {};
+    events.forEach(event => {
+      const s2 = step2Selections[event.id] || [];
+      const s3 = step3Selections[event.id] || [];
+      const combined = [...new Set([...s2, ...s3])];
+      if (combined.length > 0) {
+        mergedSelections[event.id] = combined;
+      }
+    });
+
+    const result = await registerSponsorship(formData, mergedSelections);
     if (result.success) {
       setSubmitted(true);
     }
@@ -256,7 +269,7 @@ export default function Home() {
                   <br />
                   {Object.entries((SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType)?.limits as any)).map(([ev, limit]: any) => (
                     <span key={ev} className="ml-2 px-2 py-1 bg-secondary rounded text-xs">
-                      <b>{events.find(e => e.id === ev)?.name}</b>: {(selectedDates[ev]?.length || 0)}/{limit >= 999 ? 'All' : limit} &nbsp;
+                      <b>{events.find(e => e.id === ev)?.name}</b>: {(step2Selections[ev]?.length || 0)}/{limit >= 999 ? 'All' : limit} &nbsp;
                     </span>
                   ))}
                 </p>
@@ -270,7 +283,7 @@ export default function Home() {
                     .map(event => {
                       const plan = SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType);
                       const limit = (plan?.limits as any)?.[event.id] || 0;
-                      const selectedCount = selectedDates[event.id]?.length || 0;
+                      const selectedCount = step2Selections[event.id]?.length || 0;
 
                       return (
                         <div key={event.id} className="card" style={{ padding: '1.25rem' }}>
@@ -286,8 +299,9 @@ export default function Home() {
                               <p className="text-sm text-muted-foreground italic">No dates available for this event yet.</p>
                             ) : (
                               availableDates[event.id]?.map(dateStr => {
-                                const isSelected = selectedDates[event.id]?.includes(dateStr);
-                                const isDisabled = !isSelected && selectedCount >= limit;
+                                const isSelectedInStep2 = (step2Selections[event.id] || []).includes(dateStr);
+                                const isSelectedFromStep3 = (step3Selections[event.id] || []).includes(dateStr);
+                                const isDisabled = (!isSelectedInStep2 && selectedCount >= limit) || isSelectedFromStep3;
 
                                 return (
                                   <button
@@ -295,15 +309,17 @@ export default function Home() {
                                     type="button"
                                     onClick={() => handleDateClick(event.id, new Date(dateStr + 'T12:00:00'))} // Use middle of day to avoid TZ issues
                                     disabled={isDisabled}
-                                    className={`date-chip ${isSelected ? 'selected' : ''}`}
+                                    className={`date-chip ${isSelectedInStep2 ? 'selected' : ''} ${isSelectedFromStep3 ? 'step2-selected' : ''}`}
                                     style={{
                                       padding: '0.5rem 1rem',
                                       borderRadius: '2rem',
                                       border: '1px solid var(--border)',
-                                      background: isSelected ? 'var(--primary)' : 'var(--card)',
-                                      color: isSelected ? 'white' : 'inherit',
-                                      opacity: isDisabled ? 0.4 : 1,
-                                      fontSize: '0.875rem'
+                                      background: isSelectedFromStep3 ? '#22c55e' : (isSelectedInStep2 ? 'var(--primary)' : 'var(--card)'),
+                                      color: (isSelectedInStep2 || isSelectedFromStep3) ? 'white' : 'inherit',
+                                      opacity: isDisabled && !isSelectedFromStep3 ? 0.4 : 1,
+                                      fontSize: '0.875rem',
+                                      cursor: isSelectedFromStep3 ? 'default' : (isDisabled ? 'not-allowed' : 'pointer'),
+                                      pointerEvents: isSelectedFromStep3 ? 'none' : 'auto'
                                     }}
                                   >
                                     {format(new Date(dateStr + 'T12:00:00'), 'MMM d, yyyy')}
@@ -356,8 +372,7 @@ export default function Home() {
                 if (allDatesSelected) return null;
 
                 const individualLimit = step3Limits[event.id] || 0;
-                const cumulativeLimit = planLimit + individualLimit;
-                const selectedCount = selectedDates[event.id]?.length || 0;
+                const selectedCount = step3Selections[event.id]?.length || 0;
 
                 return (
                   <div key={event.id} className="card" style={{ padding: '1.25rem' }}>
@@ -369,15 +384,13 @@ export default function Home() {
                           value={individualLimit}
                           onChange={(e) => {
                             const newIndivLimit = parseInt(e.target.value);
-                            const newCumulativeLimit = planLimit + newIndivLimit;
-
                             setStep3Limits(prev => ({ ...prev, [event.id]: newIndivLimit }));
 
                             // Clear selections if new limit is smaller
-                            if (selectedCount > newCumulativeLimit) {
-                              setSelectedDates(prev => ({
+                            if (selectedCount > newIndivLimit) {
+                              setStep3Selections(prev => ({
                                 ...prev,
-                                [event.id]: prev[event.id].slice(0, newCumulativeLimit)
+                                [event.id]: prev[event.id].slice(0, newIndivLimit)
                               }));
                             }
                           }}
@@ -391,12 +404,12 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {cumulativeLimit > 0 && (
+                    {(individualLimit > 0 || (step2Selections[event.id]?.length || 0) > 0) && (
                       <div className="animate-fade-in">
                         <div className="flex justify-between items-center mb-3">
                           <span className="text-xs text-muted-foreground">Available Dates</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded-full hidden ${selectedCount >= cumulativeLimit ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'}`}>
-                            {selectedCount} / {cumulativeLimit} Selected.
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedCount >= individualLimit ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'}`}>
+                            {selectedCount} / {individualLimit} Selected
                           </span>
                         </div>
 
@@ -406,9 +419,8 @@ export default function Home() {
                           ) : (
                             availableDates[event.id]?.map(dateStr => {
                               const isSelectedFromStep2 = (step2Selections[event.id] || []).includes(dateStr);
-                              const isSelectedInStep3 = !isSelectedFromStep2 && (selectedDates[event.id] || []).includes(dateStr);
-                              const isSelected = isSelectedFromStep2 || isSelectedInStep3;
-                              const isDisabled = (!isSelected && selectedCount >= cumulativeLimit) || isSelectedFromStep2;
+                              const isSelectedInStep3 = (step3Selections[event.id] || []).includes(dateStr);
+                              const isDisabled = isSelectedFromStep2 || (!isSelectedInStep3 && selectedCount >= individualLimit);
 
                               return (
                                 <button
@@ -422,10 +434,11 @@ export default function Home() {
                                     borderRadius: '2rem',
                                     border: '1px solid var(--border)',
                                     background: isSelectedFromStep2 ? '#22c55e' : (isSelectedInStep3 ? 'var(--primary)' : 'var(--card)'),
-                                    color: isSelected ? 'white' : 'inherit',
+                                    color: (isSelectedInStep3 || isSelectedFromStep2) ? 'white' : 'inherit',
                                     opacity: isDisabled && !isSelectedFromStep2 ? 0.4 : 1,
                                     fontSize: '0.75rem',
-                                    cursor: isSelectedFromStep2 ? 'default' : (isDisabled ? 'not-allowed' : 'pointer')
+                                    cursor: isSelectedFromStep2 ? 'default' : (isDisabled ? 'not-allowed' : 'pointer'),
+                                    pointerEvents: isSelectedFromStep2 ? 'none' : 'auto'
                                   }}
                                 >
                                   {format(new Date(dateStr + 'T12:00:00'), 'MMM d, yyyy')}
