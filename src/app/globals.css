@@ -283,6 +283,10 @@ button:disabled {
   box-shadow: var(--shadow-lg);
 }
 
+.hidden {
+  display: none !important;
+}
+
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }

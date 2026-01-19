@@ -395,8 +395,8 @@ export default function Home() {
                       <div className="animate-fade-in">
                         <div className="flex justify-between items-center mb-3">
                           <span className="text-xs text-muted-foreground">Available Dates</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedCount >= cumulativeLimit ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'}`}>
-                            {selectedCount} / {cumulativeLimit} Selected
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full hidden ${selectedCount >= cumulativeLimit ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'}`}>
+                            {selectedCount} / {cumulativeLimit} Selected.
                           </span>
                         </div>
 
