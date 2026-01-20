@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails } from '@/app/actions';
+import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails, getRegistrationsByYear } from '@/app/actions';
 import { format } from 'date-fns';
 import { Mail, Eye, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -19,6 +19,7 @@ export default function Lookup() {
     const [registrations, setRegistrations] = useState<any[]>([]);
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
+    const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
     // View Details Modal State
     const [viewingRegistration, setViewingRegistration] = useState<any | null>(null);
@@ -45,7 +46,7 @@ export default function Lookup() {
 
     useEffect(() => {
         loadAll();
-    }, []);
+    }, [selectedYear]);
 
     useEffect(() => {
         // Load DataTables scripts and styles only once
@@ -138,13 +139,14 @@ export default function Lookup() {
     }, [viewingRegistration, loadingDetails, viewedEvents]);
 
     useEffect(() => {
-        // Initialize or reinitialize DataTable when registrations change
+        // Initialize DataTable only when we have registrations
         if (!loading && registrations.length > 0 && window.jQuery && window.$.fn.DataTable) {
             const timer = setTimeout(() => {
                 initializeDataTable();
-
             }, 300);
-            return () => clearTimeout(timer);
+            return () => {
+                clearTimeout(timer);
+            };
         }
     }, [registrations, loading]);
 
@@ -154,14 +156,6 @@ export default function Lookup() {
         }
 
         try {
-            // Check if DataTable is already initialized
-            if (window.$.fn.DataTable.isDataTable(tableRef.current)) {
-                // Destroy existing instance and clear reference
-                const dt = window.$(tableRef.current).DataTable();
-                dt.destroy();
-                dataTableRef.current = null;
-            }
-
             // Clear any existing DataTable classes/attributes
             window.$(tableRef.current).removeClass('dataTable');
 
@@ -193,11 +187,30 @@ export default function Lookup() {
     };
 
     async function loadAll() {
+        // Destroy DataTable before loading new data
+        if (dataTableRef.current && tableRef.current && window.jQuery && window.$.fn.DataTable) {
+            try {
+                if (window.$.fn.DataTable.isDataTable(tableRef.current)) {
+                    dataTableRef.current.destroy();
+                    dataTableRef.current = null;
+                }
+            } catch (e) {
+                console.log('DataTable cleanup error:', e);
+            }
+        }
+
         setLoading(true);
-        const data = await getRegistrations();
-        setRegistrations(data);
-        setSelectedUsers(new Set());
-        setLoading(false);
+        try {
+            const data = await getRegistrationsByYear(selectedYear.toString());
+            setRegistrations(data || []);
+            setSelectedUsers(new Set());
+        } catch (error) {
+            console.error('Error loading registrations:', error);
+            setRegistrations([]);
+            setSelectedUsers(new Set());
+        } finally {
+            setLoading(false);
+        }
     }
 
     const handleViewDetails = async (reg: any) => {
@@ -224,11 +237,29 @@ export default function Lookup() {
     return (
         <div className="container min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#e0f2fe] py-12">
             <header className="mb-10 text-center">
-                <h1 className="text-4xl font-extrabold text-[#1e293b] mb-2">Sponsorship Lookup</h1>
+                <h1 className="text-4xl font-extrabold text-[#1e293b] mb-2">Sponsorship Details</h1>
                 <p className="text-[#64748b] text-lg hidden">Manage and monitor event registrations with ease.</p>
             </header>
 
             <div className="max-w-7xl mx-auto space-y-8">
+                {/* Year Filter */}
+                <div className="flex justify-end px-4">
+                    <div className="relative flex items-center gap-3">
+                       <label className="text-[#475569] font-semibold text-base hidden">Year:</label>
+                        <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                            className="appearance-none bg-white border border-[#cbd5e1] hover:border-[#94a3b8] text-[#1e293b] py-2.5 pl-4 pr-10 rounded-xl leading-tight focus:outline-none focus:ring-2 focus:ring-[#3b82f6/20] focus:border-[#3b82f6] font-semibold shadow-sm transition-all cursor-pointer text-base"
+                        >
+                            {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 + i).map(year => (
+                                <option key={year} value={year}>
+                                    {year}
+                                </option>
+                            ))}
+                        </select>                        
+                    </div>
+                </div>
+<hr className="mt-2"/>
                 {/* DataTable */}
                 <div
                     className="bg-white rounded-3xl shadow-xl border border-[#e2e8f0] overflow-hidden"
@@ -382,7 +413,7 @@ export default function Lookup() {
                                         {viewedEvents.map((event, index) => (
                                             <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
                                                 <td className="py-3 px-4 text-[#1e293b]" data-order={new Date(event.date).getTime()}>
-                                                    {format(new Date(event.date), 'MMMM dd, yyyy')}
+                                                    {format(new Date(event.date), 'MM/dd/yyyy')}
                                                 </td>
                                                 <td className="py-3 px-4 text-[#334155] font-medium">
                                                     {event.event_name}

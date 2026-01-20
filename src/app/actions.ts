@@ -151,6 +151,15 @@ export async function getRegistrationsByDate(date: string) {
   `).all(date) as any[];
 }
 
+export async function getRegistrationsByYear(year: string) {
+    return db.prepare(`
+    SELECT DISTINCT r.* FROM registrations r
+    JOIN registration_dates rd ON r.id = rd.registration_id
+    WHERE rd.date LIKE ?
+    ORDER BY r.created_at DESC
+  `).all(`%${year}%`) as any[];
+}
+
 export async function getAllUsers() {
     return db.prepare('SELECT id, email, role, recovery_email, created_at FROM users').all() as any[];
 }
