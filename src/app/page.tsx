@@ -391,7 +391,7 @@ export default function Home() {
         {step === 3 && (
           <div className="card grid">
             <h2 className="text-xl font-bold">Step 3: Individual Event Selection</h2>
-            <p className="text-sm text-muted-foreground">Select how many days you want for each event and pick your dates.</p>
+            <p className="text-sm text-muted-foreground hidden">Select how many days you want for each event and pick your dates.</p>
 
             <div className="grid" style={{ gap: '2rem' }}>
               {events.map(event => {
@@ -419,7 +419,13 @@ export default function Home() {
                 return (
                   <div key={event.id} className="card" style={{ padding: '1.25rem' }}>
                     <div className="grid" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
-                      <h4 className="font-bold text-lg">{event.name} {event.individualCost > 0 && `($${event.individualCost} each)`}</h4>
+                      <h4 className="font-bold text-lg">
+                        {event.name} {event.individualCost > 0 && (
+                          <span className="text-sm font-normal text-muted-foreground ml-1">
+                            (${event.individualCost} each{event.allCost ? ` / $${event.allCost} for all` : ''})
+                          </span>
+                        )}
+                      </h4>
                       <div className="flex flex-col items-end gap-1">
                         <div
                           className="flex items-center rounded-lg border border-[#d1d5db] bg-white overflow-hidden shadow-sm transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary"
@@ -453,8 +459,21 @@ export default function Home() {
                             onClick={() => {
                               if (isAllSelected) return;
                               const current = typeof individualLimit === 'number' ? individualLimit : 0;
-                              const newVal = Math.min(limitSource, current + 1);
-                              setStep3Limits(prev => ({ ...prev, [event.id]: newVal }));
+                              const newVal = current + 1;
+
+                              if (event.allCost !== null && (newVal * event.individualCost) >= event.allCost) {
+                                setStep3Limits(prev => ({ ...prev, [event.id]: 'ALL' }));
+                                if (event.dateSelectionRequired === 1) {
+                                  const allDates = (availableDates[event.id] || []).map(d => d.date);
+                                  const s2 = step2Selections[event.id] || [];
+                                  setStep3Selections(prev => ({
+                                    ...prev,
+                                    [event.id]: allDates.filter(d => !s2.includes(d))
+                                  }));
+                                }
+                              } else if (newVal <= (limitSource as number)) {
+                                setStep3Limits(prev => ({ ...prev, [event.id]: newVal }));
+                              }
                             }}
                             className="w-10 h-full hover:bg-black/5 flex items-center justify-center transition-colors bg-[#f3f4f6]"
                             disabled={isAllSelected || individualLimit >= limitSource}
@@ -472,6 +491,14 @@ export default function Home() {
                                   setStep3Selections(prev => ({ ...prev, [event.id]: [] }));
                                 } else {
                                   setStep3Limits(prev => ({ ...prev, [event.id]: 'ALL' }));
+                                  if (event.dateSelectionRequired === 1) {
+                                    const allDates = (availableDates[event.id] || []).map(d => d.date);
+                                    const s2 = step2Selections[event.id] || [];
+                                    setStep3Selections(prev => ({
+                                      ...prev,
+                                      [event.id]: allDates.filter(d => !s2.includes(d))
+                                    }));
+                                  }
                                 }
                               }}
                               className={`px-4 h-full text-xs font-bold transition-all border-l border-[#d1d5db] ${isAllSelected
