@@ -43,7 +43,7 @@ export async function getEvents() {
 }
 
 export async function getEventDates(eventId: string) {
-    return db.prepare('SELECT * FROM event_dates WHERE event_id = ? ORDER BY date ASC').all(eventId) as { id: string, event_id: string, date: string }[];
+    return db.prepare('SELECT * FROM event_dates WHERE event_id = ? ORDER BY date ASC').all(eventId) as { id: string, event_id: string, date: string, title?: string }[];
 }
 
 export async function addEventDate(eventId: string, date: string) {
@@ -54,6 +54,11 @@ export async function addEventDate(eventId: string, date: string) {
 
 export async function deleteEventDate(id: string) {
     db.prepare('DELETE FROM event_dates WHERE id = ?').run(id);
+    revalidatePath('/admin/eventMaster');
+}
+
+export async function updateEventDateTitle(id: string, title: string) {
+    db.prepare('UPDATE event_dates SET title = ? WHERE id = ?').run(title, id);
     revalidatePath('/admin/eventMaster');
 }
 
