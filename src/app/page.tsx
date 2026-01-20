@@ -268,7 +268,8 @@ export default function Home() {
                 <input name="email" type="email" value={formData.email} onChange={handleInputChange} required />
               </div>
             </div>
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-between mt-4">
+              <div></div>
               <button type="submit" className="btn-primary">Next Step</button>
             </div>
           </form>
