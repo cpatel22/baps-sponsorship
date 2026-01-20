@@ -409,7 +409,7 @@ export default function Home() {
                 const individualLimit = step3Limits[event.id] || 0;
                 const isAllSelected = individualLimit === 'ALL';
 
-                const maxAvailableDates = eventAvailableDates.length;
+                const maxAvailableDates = eventAvailableDates.length - step2EventSelections.length;
                 const limitSource = event.dateSelectionRequired === 1 ? maxAvailableDates : (event.individualUpto || 0);
 
                 const effectiveLimit = isAllSelected ? maxAvailableDates : (individualLimit as number);
