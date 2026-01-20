@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react';
-import { getRegistrations, getCurrentUser, sendEmailReminder } from '@/app/actions';
-import { Mail } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails } from '@/app/actions';
+import { format } from 'date-fns';
+import { Mail, Eye, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 // DataTables types
@@ -17,8 +19,18 @@ export default function Lookup() {
     const [registrations, setRegistrations] = useState<any[]>([]);
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
+
+    // View Details Modal State
+    const [viewingRegistration, setViewingRegistration] = useState<any | null>(null);
+    const [viewedEvents, setViewedEvents] = useState<any[]>([]);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+
     const tableRef = useRef<HTMLTableElement>(null);
     const dataTableRef = useRef<any>(null);
+
+    const modalTableRef = useRef<HTMLTableElement>(null);
+    const modalDataTableRef = useRef<any>(null);
+
     const router = useRouter();
 
     useEffect(() => {
@@ -70,15 +82,68 @@ export default function Lookup() {
                     console.log('DataTable cleanup error:', e);
                 }
             }
+            if (modalDataTableRef.current) {
+                try {
+                    modalDataTableRef.current.destroy();
+                    modalDataTableRef.current = null;
+                } catch (e) {
+                    console.log('Modal DataTable cleanup error:', e);
+                }
+            }
         };
     }, []);
+
+    useEffect(() => {
+        // Initialize Modal DataTable when modal is open and data is loaded
+        if (viewingRegistration && !loadingDetails && viewedEvents.length > 0 && window.jQuery && window.$.fn.DataTable) {
+            // Use a slightly longer timeout to ensure React has fully rendered the table DOM
+            const timer = setTimeout(() => {
+                const tableEl = document.getElementById('modal-details-table');
+                if (tableEl) {
+                    // Clean up any potential existing instance
+                    if (window.$.fn.DataTable.isDataTable(tableEl)) {
+                        window.$(tableEl).DataTable().destroy();
+                    }
+
+                    modalDataTableRef.current = window.$(tableEl).DataTable({
+                        pageLength: 5,
+                        responsive: true,
+                        destroy: true,
+                        searching: true, // Enable search
+                        info: true,      // Enable info
+                        paging: true,    // Enable paging
+                        lengthChange: false,
+                        order: [[0, 'asc']], // Default sort by Date
+                        language: {
+                            emptyTable: "No events found",
+                            search: "Filter events:"
+                        }
+                    });
+                }
+            }, 300);
+            return () => {
+                clearTimeout(timer);
+                if (modalDataTableRef.current) {
+                    // Check if table still exists before destroying to avoid errors
+                    const tableEl = document.getElementById('modal-details-table');
+                    if (tableEl && window.$.fn.DataTable.isDataTable(tableEl)) {
+                        try {
+                            modalDataTableRef.current.destroy();
+                        } catch (e) { console.error(e); }
+                    }
+                    modalDataTableRef.current = null;
+                }
+            };
+        }
+    }, [viewingRegistration, loadingDetails, viewedEvents]);
 
     useEffect(() => {
         // Initialize or reinitialize DataTable when registrations change
         if (!loading && registrations.length > 0 && window.jQuery && window.$.fn.DataTable) {
             const timer = setTimeout(() => {
                 initializeDataTable();
-            }, 200);
+
+            }, 300);
             return () => clearTimeout(timer);
         }
     }, [registrations, loading]);
@@ -107,7 +172,7 @@ export default function Lookup() {
                 destroy: true, // Allow re-initialization
                 order: [[1, 'asc']],
                 columnDefs: [
-                    { orderable: false, targets: 0 }
+                    { orderable: false, targets: [0, 7] }
                 ],
                 language: {
                     search: "Search:",
@@ -135,6 +200,17 @@ export default function Lookup() {
         setLoading(false);
     }
 
+    const handleViewDetails = async (reg: any) => {
+        setViewingRegistration(reg);
+        setLoadingDetails(true);
+        try {
+            const events = await getRegistrationEventsWithDetails(reg.id);
+            setViewedEvents(events);
+        } finally {
+            setLoadingDetails(false);
+        }
+    };
+
     const handleCheckboxChange = (userId: string) => {
         const newSelected = new Set(selectedUsers);
         if (newSelected.has(userId)) {
@@ -154,7 +230,22 @@ export default function Lookup() {
 
             <div className="max-w-7xl mx-auto space-y-8">
                 {/* DataTable */}
-                <div className="bg-white rounded-3xl shadow-xl border border-[#e2e8f0] overflow-hidden">
+                <div
+                    className="bg-white rounded-3xl shadow-xl border border-[#e2e8f0] overflow-hidden"
+                    onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        const btn = target.closest('.view-details-btn');
+                        if (btn) {
+                            const userId = btn.getAttribute('data-userid');
+                            if (userId) {
+                                const reg = registrations.find(r => String(r.id) === String(userId));
+                                if (reg) {
+                                    handleViewDetails(reg);
+                                }
+                            }
+                        }
+                    }}
+                >
                     <div className="p-8">
                         <h2 className="text-2xl font-extrabold text-[#1e293b] mb-6 hidden">Registration Records</h2>
 
@@ -192,6 +283,7 @@ export default function Lookup() {
                                             <th className="px-4 py-4 text-left font-bold text-[#475569]">Email</th>
                                             <th className="px-4 py-4 text-left font-bold text-[#475569]">Phone</th>
                                             <th className="px-4 py-4 text-left font-bold text-[#475569]">Sponsorship</th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -218,6 +310,15 @@ export default function Lookup() {
                                                         {reg.sponsorship_type}
                                                     </span>
                                                 </td>
+                                                <td className="px-4 py-4">
+                                                    <button
+                                                        data-userid={reg.id}
+                                                        className="view-details-btn p-2 text-[#3b82f6] hover:bg-[#eff6ff] rounded-lg transition-colors"
+                                                        title="View Details"
+                                                    >
+                                                        <Eye size={20} className="pointer-events-none" />
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -227,6 +328,82 @@ export default function Lookup() {
                     </div>
                 </div>
             </div>
+
+            {/* View Details Modal */}
+            {viewingRegistration && typeof document !== 'undefined' && createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}
+                >
+                    <div
+                        className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex-col md:min-w-[500px]"
+                        style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '42rem', maxHeight: '90vh', borderRadius: '1.5rem', overflow: 'hidden' }}
+                    >
+                        <div
+                            className="p-6 border-b border-[#e2e8f0] flex justify-between items-center bg-[#f8fafc]"
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '0.8rem', borderBottom: '1px solid #e2e8f0' }}
+                        >
+                            <div>
+                                <h3 className="text-2xl font-bold text-[#1e293b]">Registration Details</h3>
+                                <p className="text-[#64748b]">
+                                    {viewingRegistration.first_name} {viewingRegistration.spouse_first_name} {viewingRegistration.last_name}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setViewingRegistration(null);
+                                    setViewedEvents([]);
+                                }}
+                                className="p-2 hover:bg-[#e2e8f0] rounded-full transition-colors text-[#64748b]"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div
+                            className="p-6 overflow-y-auto"
+                            style={{ padding: '0rem', overflowY: 'auto' }}
+                        >
+                            {loadingDetails ? (
+                                <div className="py-10 text-center text-[#94a3b8]">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3b82f6] mx-auto mb-2"></div>
+                                    Loading details...
+                                </div>
+                            ) : viewedEvents.length > 0 ? (
+                                <table id="modal-details-table" ref={modalTableRef} className="w-full display" style={{ width: '100%' }}>
+                                    <thead>
+                                        <tr className="border-b border-[#e2e8f0]">
+                                            <th className="text-left py-3 px-4 font-bold text-[#475569]">Date</th>
+                                            <th className="text-left py-3 px-4 font-bold text-[#475569]">Event Type</th>
+                                            <th className="text-left py-3 px-4 font-bold text-[#475569]">Event Name</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {viewedEvents.map((event, index) => (
+                                            <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
+                                                <td className="py-3 px-4 text-[#1e293b]" data-order={new Date(event.date).getTime()}>
+                                                    {format(new Date(event.date), 'MMMM dd, yyyy')}
+                                                </td>
+                                                <td className="py-3 px-4 text-[#334155] font-medium">
+                                                    {event.event_name}
+                                                </td>
+                                                <td className="py-3 px-4 text-[#64748b]">
+                                                    {event.date_title || ''}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="text-center py-10 text-[#94a3b8]">
+                                    No events found for this registration.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 }
