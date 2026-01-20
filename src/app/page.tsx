@@ -34,7 +34,7 @@ export default function Home() {
   });
 
   const [events, setEvents] = useState<any[]>([]);
-  const [availableDates, setAvailableDates] = useState<{ [eventId: string]: string[] }>({});
+  const [availableDates, setAvailableDates] = useState<{ [eventId: string]: { date: string, title?: string }[] }>({});
   const [step2Selections, setStep2Selections] = useState<{ [eventId: string]: string[] }>({});
   const [step3Selections, setStep3Selections] = useState<{ [eventId: string]: string[] }>({});
   const [loading, setLoading] = useState(false);
@@ -45,10 +45,10 @@ export default function Home() {
       const evs = await getEvents();
       setEvents(evs);
 
-      const datesObj: { [eventId: string]: string[] } = {};
+      const datesObj: { [eventId: string]: { date: string, title?: string }[] } = {};
       for (const event of evs) {
         const dates = await getEventDates(event.id);
-        datesObj[event.id] = dates.map(d => d.date);
+        datesObj[event.id] = dates;
       }
       setAvailableDates(datesObj);
     }
@@ -65,7 +65,7 @@ export default function Home() {
         const plan = SPONSORSHIP_PLANS.find(p => p.id === value);
         if (plan && (plan as any).autoSelect) {
           (plan as any).autoSelect.forEach((eventId: string) => {
-            newSelections[eventId] = availableDates[eventId] || [];
+            newSelections[eventId] = (availableDates[eventId] || []).map(d => d.date);
           });
         }
       }
@@ -87,7 +87,7 @@ export default function Home() {
           if (limit === 0) return;
 
           const selectedForEvent = step2Selections[eventId] || [];
-          const availableForEvent = availableDates[eventId] || [];
+          const availableForEvent = (availableDates[eventId] || []).map(d => d.date);
 
           // If limit is 999 (All), user must select all available dates
           if (limit >= 999) {
@@ -298,16 +298,16 @@ export default function Home() {
                             {availableDates[event.id]?.length === 0 ? (
                               <p className="text-sm text-muted-foreground italic">No dates available for this event yet.</p>
                             ) : (
-                              availableDates[event.id]?.map(dateStr => {
-                                const isSelectedInStep2 = (step2Selections[event.id] || []).includes(dateStr);
-                                const isSelectedFromStep3 = (step3Selections[event.id] || []).includes(dateStr);
+                              availableDates[event.id]?.map(dateObj => {
+                                const isSelectedInStep2 = (step2Selections[event.id] || []).includes(dateObj.date);
+                                const isSelectedFromStep3 = (step3Selections[event.id] || []).includes(dateObj.date);
                                 const isDisabled = (!isSelectedInStep2 && selectedCount >= limit) || isSelectedFromStep3;
 
                                 return (
                                   <button
-                                    key={dateStr}
+                                    key={dateObj.date}
                                     type="button"
-                                    onClick={() => handleDateClick(event.id, new Date(dateStr + 'T12:00:00'))} // Use middle of day to avoid TZ issues
+                                    onClick={() => handleDateClick(event.id, new Date(dateObj.date + 'T12:00:00'))} // Use middle of day to avoid TZ issues
                                     disabled={isDisabled}
                                     className={`date-chip ${isSelectedInStep2 ? 'selected' : ''} ${isSelectedFromStep3 ? 'step2-selected' : ''}`}
                                     style={{
@@ -322,7 +322,8 @@ export default function Home() {
                                       pointerEvents: isSelectedFromStep3 ? 'none' : 'auto'
                                     }}
                                   >
-                                    {format(new Date(dateStr + 'T12:00:00'), 'MMM d, yyyy')}
+                                    {format(new Date(dateObj.date + 'T12:00:00'), 'MMM d, yyyy')}
+                                    {dateObj.title && ` - ${dateObj.title}`}
                                   </button>
                                 );
                               })
@@ -364,7 +365,7 @@ export default function Home() {
                 const planLimit = (plan?.limits as any)?.[event.id] || 0;
 
                 // Requirement 1: If all available dates are selected in Step 2, hide this event
-                const eventAvailableDates = availableDates[event.id] || [];
+                const eventAvailableDates = (availableDates[event.id] || []).map(d => d.date);
                 const step2EventSelections = step2Selections[event.id] || [];
                 const allDatesSelected = eventAvailableDates.length > 0 &&
                   eventAvailableDates.every(d => step2EventSelections.includes(d));
@@ -417,16 +418,16 @@ export default function Home() {
                           {availableDates[event.id]?.length === 0 ? (
                             <p className="text-sm text-muted-foreground italic">No dates available for this event.</p>
                           ) : (
-                            availableDates[event.id]?.map(dateStr => {
-                              const isSelectedFromStep2 = (step2Selections[event.id] || []).includes(dateStr);
-                              const isSelectedInStep3 = (step3Selections[event.id] || []).includes(dateStr);
+                            availableDates[event.id]?.map(dateObj => {
+                              const isSelectedFromStep2 = (step2Selections[event.id] || []).includes(dateObj.date);
+                              const isSelectedInStep3 = (step3Selections[event.id] || []).includes(dateObj.date);
                               const isDisabled = isSelectedFromStep2 || (!isSelectedInStep3 && selectedCount >= individualLimit);
 
                               return (
                                 <button
-                                  key={dateStr}
+                                  key={dateObj.date}
                                   type="button"
-                                  onClick={() => handleDateClick(event.id, new Date(dateStr + 'T12:00:00'))}
+                                  onClick={() => handleDateClick(event.id, new Date(dateObj.date + 'T12:00:00'))}
                                   disabled={isDisabled}
                                   className={`date-chip ${isSelectedInStep3 ? 'selected' : ''} ${isSelectedFromStep2 ? 'step2-selected' : ''}`}
                                   style={{
@@ -441,7 +442,8 @@ export default function Home() {
                                     pointerEvents: isSelectedFromStep2 ? 'none' : 'auto'
                                   }}
                                 >
-                                  {format(new Date(dateStr + 'T12:00:00'), 'MMM d, yyyy')}
+                                  {format(new Date(dateObj.date + 'T12:00:00'), 'MMM d, yyyy')}
+                                  {dateObj.title && ` - ${dateObj.title}`}
                                 </button>
                               );
                             })
