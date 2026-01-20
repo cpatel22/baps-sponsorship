@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { getEvents, getEventDates, registerSponsorship } from '@/app/actions';
 import Calendar from '@/components/Calendar';
 import { format } from 'date-fns';
-import { Check } from 'lucide-react';
+import { Check, Plus, Minus } from 'lucide-react';
 
 const SPONSORSHIP_PLANS = [
   { id: 'silver', name: 'Annual Silver Sponsorship (1 Samaiya, 1 Mahila Samaiya, 4 Weekly Satsang Sabha)', limits: { event_a: 1, event_b: 1, event_c: 4 }, eligible_events: ['event_a', 'event_b', 'event_c'], price: 1751 },
@@ -27,7 +27,7 @@ export default function Home() {
     sponsorshipType: '',
   });
 
-  const [step3Limits, setStep3Limits] = useState<{ [eventId: string]: number }>({
+  const [step3Limits, setStep3Limits] = useState<{ [eventId: string]: number | string }>({
     event_a: 0,
     event_b: 0,
     event_c: 0,
@@ -120,7 +120,7 @@ export default function Home() {
     if (step === 2 && (step3Selections[eventId] || []).includes(formattedDate)) return;
     if (step === 3 && (step2Selections[eventId] || []).includes(formattedDate)) return;
 
-    let limit = 0;
+    let limit: number = 0;
     if (step === 2) {
       const plan = SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType);
       if (plan) {
@@ -132,7 +132,13 @@ export default function Home() {
         return;
       }
     } else {
-      limit = step3Limits[eventId] || 0;
+      const rawLimit = step3Limits[eventId] || 0;
+      if (rawLimit === 'ALL') {
+        limit = (availableDates[eventId] || []).length;
+      } else {
+        limit = rawLimit as number;
+      }
+
       if (limit === 0) {
         alert(`Please set a limit for ${events.find(e => e.id === eventId)?.name} first.`);
         return;
@@ -158,6 +164,26 @@ export default function Home() {
         alert(`You have reached the ${type} of ${limit} days for ${events.find(e => e.id === eventId)?.name}.`);
       }
     }
+  };
+
+  const calculateGrandTotal = () => {
+    let total = 0;
+    const plan = SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType);
+    if (plan) {
+      total += plan.price;
+    }
+
+    // Individual costs from Step 3
+    events.forEach(event => {
+      const individualLimit = step3Limits[event.id] || 0;
+      if (individualLimit === 'ALL') {
+        total += event.allCost || 0;
+      } else {
+        total += (individualLimit as number) * (event.individualCost || 0);
+      }
+    });
+
+    return total;
   };
 
   const handleSubmit = async () => {
@@ -336,6 +362,14 @@ export default function Home() {
               </div>
             )}
 
+            {formData.sponsorshipType && (
+              <div className="text-right mt-4">
+                <span className="text-xl font-bold">
+                  Total: <span className="text-primary">${calculateGrandTotal()}</span>
+                </span>
+              </div>
+            )}
+
             <div className="flex justify-between mt-8">
               <button
                 type="button"
@@ -373,55 +407,102 @@ export default function Home() {
                 if (allDatesSelected) return null;
 
                 const individualLimit = step3Limits[event.id] || 0;
+                const isAllSelected = individualLimit === 'ALL';
+
+                const maxAvailableDates = eventAvailableDates.length;
+                const limitSource = event.dateSelectionRequired === 1 ? maxAvailableDates : (event.individualUpto || 0);
+
+                const effectiveLimit = isAllSelected ? maxAvailableDates : (individualLimit as number);
                 const selectedCount = step3Selections[event.id]?.length || 0;
+                const currentCost = isAllSelected ? event.allCost : (individualLimit as number) * (event.individualCost || 0);
 
                 return (
                   <div key={event.id} className="card" style={{ padding: '1.25rem' }}>
-                    <div className="grid mb-4" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
-                      <h4 className="font-bold text-lg">{event.name}</h4>
-                      <div className="flex items-center gap-3">
-                        <label className="text-sm font-medium">Add Limit:</label>
-                        <select
-                          value={individualLimit}
-                          onChange={(e) => {
-                            const newIndivLimit = parseInt(e.target.value);
-                            setStep3Limits(prev => ({ ...prev, [event.id]: newIndivLimit }));
-
-                            // Clear selections if new limit is smaller
-                            if (selectedCount > newIndivLimit) {
-                              setStep3Selections(prev => ({
-                                ...prev,
-                                [event.id]: prev[event.id].slice(0, newIndivLimit)
-                              }));
-                            }
-                          }}
-                          style={{ width: '80px', padding: '0.25rem 0.5rem' }}
+                    <div className="grid" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
+                      <h4 className="font-bold text-lg">{event.name} {event.individualCost > 0 && `($${event.individualCost} each)`}</h4>
+                      <div className="flex flex-col items-end gap-1">
+                        <div
+                          className="flex items-center rounded-lg border border-[#d1d5db] bg-white overflow-hidden shadow-sm transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary"
+                          style={{ height: '36px' }}
                         >
-                          <option value="0">0</option>
-                          {[1, 2, 3, 4, 5].map(n => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
+                          {/* Prepend: Minus Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = typeof individualLimit === 'number' ? individualLimit : 0;
+                              const newVal = Math.max(0, current - 1);
+                              setStep3Limits(prev => ({ ...prev, [event.id]: newVal }));
+                              if (selectedCount > newVal) {
+                                setStep3Selections(prev => ({ ...prev, [event.id]: (prev[event.id] || []).slice(0, newVal) }));
+                              }
+                            }}
+                            className="w-10 h-full hover:bg-black/5 flex items-center justify-center transition-colors bg-[#f3f4f6]"
+                            disabled={isAllSelected || individualLimit === 0}
+                          >
+                            <span className={`text-xl leading-none text-[#374151] ${isAllSelected || individualLimit === 0 ? 'opacity-20' : ''}`} style={{ marginTop: '-1px' }}>−</span>
+                          </button>
+
+                          {/* Center: Value Display (Styled as Input) */}
+                          <div className="w-16 h-full flex items-center justify-center text-center font-semibold text-black text-lg border-x border-[#d1d5db] bg-white">
+                            {isAllSelected ? '∞' : (individualLimit || 0)}
+                          </div>
+
+                          {/* Append: Plus Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isAllSelected) return;
+                              const current = typeof individualLimit === 'number' ? individualLimit : 0;
+                              const newVal = Math.min(limitSource, current + 1);
+                              setStep3Limits(prev => ({ ...prev, [event.id]: newVal }));
+                            }}
+                            className="w-10 h-full hover:bg-black/5 flex items-center justify-center transition-colors bg-[#f3f4f6]"
+                            disabled={isAllSelected || individualLimit >= limitSource}
+                          >
+                            <span className={`text-xl leading-none text-[#374151] ${isAllSelected || (individualLimit as number) >= limitSource ? 'opacity-20' : ''}`}>+</span>
+                          </button>
+
+                          {/* Outer Append: ALL Button */}
+                          {event.allCost !== null && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isAllSelected) {
+                                  setStep3Limits(prev => ({ ...prev, [event.id]: 0 }));
+                                  setStep3Selections(prev => ({ ...prev, [event.id]: [] }));
+                                } else {
+                                  setStep3Limits(prev => ({ ...prev, [event.id]: 'ALL' }));
+                                }
+                              }}
+                              className={`px-4 h-full text-xs font-bold transition-all border-l border-[#d1d5db] ${isAllSelected
+                                ? 'bg-primary text-white'
+                                : 'bg-white text-primary hover:bg-primary/5'
+                                }`}
+                            >
+                              ALL
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {(individualLimit > 0 || (step2Selections[event.id]?.length || 0) > 0) && (
-                      <div className="animate-fade-in">
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="text-xs text-muted-foreground">Available Dates</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedCount >= individualLimit ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'}`}>
-                            {selectedCount} / {individualLimit} Selected
+                    {event.dateSelectionRequired === 1 && (effectiveLimit > 0 || (step2Selections[event.id]?.length || 0) > 0) && (
+                      <fieldset className="card-dates">
+                        <legend className="px-2 flex items-center gap-2 -ml-1">
+                          <span className="text-xs font-bold uppercase tracking-widest text-[#64748b] hidden">Available Dates</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm ${selectedCount >= effectiveLimit ? 'bg-primary text-white' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
+                            {selectedCount} / {isAllSelected ? 'All' : effectiveLimit} Selected
                           </span>
-                        </div>
+                        </legend>
 
-                        <div className="flex" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <div className="flex pt-2" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
                           {availableDates[event.id]?.length === 0 ? (
                             <p className="text-sm text-muted-foreground italic">No dates available for this event.</p>
                           ) : (
                             availableDates[event.id]?.map(dateObj => {
                               const isSelectedFromStep2 = (step2Selections[event.id] || []).includes(dateObj.date);
                               const isSelectedInStep3 = (step3Selections[event.id] || []).includes(dateObj.date);
-                              const isDisabled = isSelectedFromStep2 || (!isSelectedInStep3 && selectedCount >= individualLimit);
+                              const isDisabled = isSelectedFromStep2 || (!isSelectedInStep3 && selectedCount >= effectiveLimit);
 
                               return (
                                 <button
@@ -449,6 +530,14 @@ export default function Home() {
                             })
                           )}
                         </div>
+                      </fieldset>
+                    )}
+                    {currentCost > 0 && (
+                      <div className="text-right mt-2">
+                        <hr className="border-border mt-2" />
+                        <span className="text-xl font-bold">
+                          Total: <span className="text-primary">${currentCost}</span>
+                        </span>
                       </div>
                     )}
                   </div>
@@ -456,7 +545,13 @@ export default function Home() {
               })}
             </div>
 
-            <div className="flex justify-between mt-8">
+            <div className="text-right border-t-2 border-border">
+              <span className="text-2xl font-black">
+                Grand Total: <span className="text-primary">${calculateGrandTotal()}</span>
+              </span>
+            </div>
+
+            <div className="flex justify-between mt-1">
               <button
                 type="button"
                 onClick={() => setStep(2)}
@@ -476,7 +571,6 @@ export default function Home() {
           </div>
         )}
       </div>
-
     </div>
   );
 }
