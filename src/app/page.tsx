@@ -390,7 +390,7 @@ export default function Home() {
 
         {step === 3 && (
           <div className="card grid">
-            <h2 className="text-xl font-bold">Step 3: Individual Event Selection</h2>
+            <h2 className="text-xl font-bold">Step 3: Individual Events</h2>
             <p className="text-sm text-muted-foreground hidden">Select how many days you want for each event and pick your dates.</p>
 
             <div className="grid" style={{ gap: '2rem' }}>

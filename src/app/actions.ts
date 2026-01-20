@@ -39,13 +39,14 @@ export async function getCurrentUser() {
 }
 
 export async function getEvents() {
-    return db.prepare('SELECT * FROM events ORDER BY id ASC').all() as {
+    return db.prepare('SELECT * FROM events ORDER BY sortOrder ASC').all() as {
         id: string,
         name: string,
         individualCost: number,
         allCost: number,
         individualUpto: number,
-        dateSelectionRequired: number
+        dateSelectionRequired: number,
+        sortOrder: number
     }[];
 }
 
