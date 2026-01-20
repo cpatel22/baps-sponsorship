@@ -33,6 +33,7 @@ export default async function RootLayout({
               {user ? (
                 <>
                   <Link href="/admin/eventMaster" className="nav-link">Event Master</Link>
+                  <Link href="/admin/details" className="nav-link">Details</Link>
                   <Link href="/admin/lookup" className="nav-link">Lookup</Link>
                   <Link href="/admin/users" className="nav-link">Users</Link>
 
