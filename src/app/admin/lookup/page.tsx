@@ -1,21 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react';
-import { getRegistrations, searchRegistrations, getRegistrationsByDate, getRegistrationDates, getCurrentUser, sendEmailReminder } from '@/app/actions';
-import { format } from 'date-fns';
-import { Search, Calendar as CalendarIcon, User, ChevronRight, Mail, Phone, MapPin } from 'lucide-react';
-import Calendar from '@/components/Calendar';
+import { useState, useEffect, useRef } from 'react';
+import { getRegistrations, getCurrentUser, sendEmailReminder } from '@/app/actions';
+import { Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+
+// DataTables types
+declare global {
+    interface Window {
+        $: any;
+        jQuery: any;
+    }
+}
 
 export default function Lookup() {
     const [registrations, setRegistrations] = useState<any[]>([]);
-    const [searchMode, setSearchMode] = useState<'info' | 'date'>('info');
-    const [query, setQuery] = useState('');
-    const [selectedDate, setSelectedDate] = useState<string | null>(null);
-    const [gridSearch, setGridSearch] = useState('');
+    const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
-    const [selectedReg, setSelectedReg] = useState<any>(null);
-    const [regDates, setRegDates] = useState<any[]>([]);
+    const tableRef = useRef<HTMLTableElement>(null);
+    const dataTableRef = useRef<any>(null);
     const router = useRouter();
 
     useEffect(() => {
@@ -32,223 +35,198 @@ export default function Lookup() {
         loadAll();
     }, []);
 
+    useEffect(() => {
+        // Load DataTables scripts and styles only once
+        if (typeof window !== 'undefined' && !window.jQuery) {
+            const jqueryScript = document.createElement('script');
+            jqueryScript.id = 'jquery-script';
+            jqueryScript.src = 'https://code.jquery.com/jquery-3.7.1.min.js';
+            jqueryScript.async = true;
+            jqueryScript.onload = () => {
+                const dtScript = document.createElement('script');
+                dtScript.id = 'datatables-script';
+                dtScript.src = 'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js';
+                dtScript.async = true;
+                document.body.appendChild(dtScript);
+            };
+            document.body.appendChild(jqueryScript);
+
+            const dtStyles = document.createElement('link');
+            dtStyles.id = 'datatables-styles';
+            dtStyles.rel = 'stylesheet';
+            dtStyles.href = 'https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css';
+            document.head.appendChild(dtStyles);
+        }
+    }, []);
+
+    useEffect(() => {
+        // Destroy DataTable on unmount
+        return () => {
+            if (dataTableRef.current) {
+                try {
+                    dataTableRef.current.destroy();
+                    dataTableRef.current = null;
+                } catch (e) {
+                    console.log('DataTable cleanup error:', e);
+                }
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        // Initialize or reinitialize DataTable when registrations change
+        if (!loading && registrations.length > 0 && window.jQuery && window.$.fn.DataTable) {
+            const timer = setTimeout(() => {
+                initializeDataTable();
+            }, 200);
+            return () => clearTimeout(timer);
+        }
+    }, [registrations, loading]);
+
+    const initializeDataTable = () => {
+        if (!tableRef.current || !window.jQuery || !window.$.fn.DataTable) {
+            return;
+        }
+
+        try {
+            // Check if DataTable is already initialized
+            if (window.$.fn.DataTable.isDataTable(tableRef.current)) {
+                // Destroy existing instance and clear reference
+                const dt = window.$(tableRef.current).DataTable();
+                dt.destroy();
+                dataTableRef.current = null;
+            }
+
+            // Clear any existing DataTable classes/attributes
+            window.$(tableRef.current).removeClass('dataTable');
+
+            // Initialize new DataTable
+            dataTableRef.current = window.$(tableRef.current).DataTable({
+                pageLength: 10,
+                responsive: true,
+                destroy: true, // Allow re-initialization
+                order: [[1, 'asc']],
+                columnDefs: [
+                    { orderable: false, targets: 0 }
+                ],
+                language: {
+                    search: "Search:",
+                    lengthMenu: "_MENU_ entries per page",
+                    info: "Showing _START_ to _END_ of _TOTAL_ entries",
+                    paginate: {
+                        first: "First",
+                        last: "Last",
+                        next: "Next",
+                        previous: "Previous"
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('DataTable initialization error:', error);
+            dataTableRef.current = null;
+        }
+    };
+
     async function loadAll() {
         setLoading(true);
         const data = await getRegistrations();
         setRegistrations(data);
+        setSelectedUsers(new Set());
         setLoading(false);
     }
 
-    const handleSearch = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        setLoading(true);
-        setSelectedReg(null);
-
-        if (searchMode === 'date' && selectedDate) {
-            const data = await getRegistrationsByDate(selectedDate);
-            setRegistrations(data);
-        } else if (searchMode === 'info' && query) {
-            const data = await searchRegistrations(query);
-            setRegistrations(data);
+    const handleCheckboxChange = (userId: string) => {
+        const newSelected = new Set(selectedUsers);
+        if (newSelected.has(userId)) {
+            newSelected.delete(userId);
         } else {
-            loadAll();
+            newSelected.add(userId);
         }
-        setLoading(false);
-    };
-
-    const handleDateChange = (dateStr: string) => {
-        setSelectedDate(dateStr);
-    };
-
-    const viewDetails = async (reg: any) => {
-        setSelectedReg(reg);
-        const dates = await getRegistrationDates(reg.id);
-        setRegDates(dates);
+        setSelectedUsers(newSelected);
     };
 
     return (
-        <div className="container min-h-screen bg-[#f8fafc] py-12">
+        <div className="container min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#e0f2fe] py-12">
             <header className="mb-10 text-center">
-                <h1 className="text-3xl font-extrabold text-[#1e293b]">Sponsorship Lookup</h1>
-                <p className="text-[#64748b] mt-2">Manage and monitor event registrations with ease.</p>
+                <h1 className="text-4xl font-extrabold text-[#1e293b] mb-2">Sponsorship Lookup</h1>
+                <p className="text-[#64748b] text-lg hidden">Manage and monitor event registrations with ease.</p>
             </header>
 
-            <div className="max-w-6xl mx-auto space-y-10">
-                {/* Search Panel - Matching Image */}
-                <div className="bg-[#eff6ff] p-8 rounded-[2rem] shadow-sm border border-[#e2e8f0]">
-                    <div className="flex mb-0">
-                        <button
-                            onClick={() => setSearchMode('info')}
-                            className={`flex items-center gap-3 px-8 py-3 rounded-t-2xl font-bold transition-all ${searchMode === 'info' ? 'bg-[#60a5fa] text-white shadow-lg' : 'bg-[#e2e8f0] text-[#475569] hover:bg-[#d1d5db]'}`}
-                        >
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${searchMode === 'info' ? 'border-white' : 'border-[#475569]'}`}>
-                                {searchMode === 'info' && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                            </div>
-                            By Info
-                        </button>
-                        <button
-                            onClick={() => setSearchMode('date')}
-                            className={`flex items-center gap-3 px-8 py-3 rounded-t-2xl font-bold transition-all ${searchMode === 'date' ? 'bg-[#60a5fa] text-white shadow-lg' : 'bg-[#e2e8f0] text-[#475569] hover:bg-[#d1d5db]'}`}
-                        >
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${searchMode === 'date' ? 'border-white' : 'border-[#475569]'}`}>
-                                {searchMode === 'date' && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                            </div>
-                            By Date
-                        </button>
-                    </div>
+            <div className="max-w-7xl mx-auto space-y-8">
+                {/* DataTable */}
+                <div className="bg-white rounded-3xl shadow-xl border border-[#e2e8f0] overflow-hidden">
+                    <div className="p-8">
+                        <h2 className="text-2xl font-extrabold text-[#1e293b] mb-6 hidden">Registration Records</h2>
 
-                    <div className="bg-white p-6 rounded-b-2xl rounded-tr-2xl shadow-xl border border-[#e2e8f0]">
-                        <form onSubmit={handleSearch} className="flex gap-4">
-                            <div className="relative flex-1">
-                                <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-                                {searchMode === 'info' ? (
-                                    <input
-                                        placeholder="Search by name, email or phone..."
-                                        value={query}
-                                        onChange={(e) => setQuery(e.target.value)}
-                                        className="w-full pl-12 h-[56px] rounded-xl border-[#e2e8f0] border-2 focus:border-[#60a5fa] focus:ring-0 transition-all text-[#1e293b]"
-                                    />
-                                ) : (
-                                    <input
-                                        type="date"
-                                        className="w-full pl-12 h-[56px] rounded-xl border-[#e2e8f0] border-2 focus:border-[#60a5fa] focus:ring-0 transition-all text-[#1e293b]"
-                                        value={selectedDate || ''}
-                                        onChange={(e) => setSelectedDate(e.target.value)}
-                                    />
-                                )}
+                        {loading ? (
+                            <div className="py-20 text-center text-[#94a3b8]">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#3b82f6] mx-auto mb-4"></div>
+                                Loading registrations...
                             </div>
-                            <button
-                                type="submit"
-                                className="bg-[#3b82f6] text-white px-8 h-[56px] rounded-xl font-bold flex items-center gap-3 shadow-lg hover:bg-[#2563eb] active:scale-95 transition-all"
-                            >
-                                <Search size={20} /> Search
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                {/* Registration Records Grid */}
-                <div className="bg-white rounded-[2rem] shadow-xl border border-[#e2e8f0] overflow-hidden p-8 animate-fade-in">
-                    <div className="flex justify-between items-center mb-8">
-                        <h2 className="text-2xl font-extrabold text-[#1e293b]">Registration Records</h2>
-                        <div className="relative w-72">
-                            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
-                            <input
-                                placeholder="Filter records..."
-                                value={gridSearch}
-                                onChange={(e) => setGridSearch(e.target.value)}
-                                className="pl-10 h-10 w-full rounded-xl border-[#e2e8f0] bg-[#f8fafc] text-sm focus:border-[#60a5fa] focus:ring-0"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#e2e8f0] overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-[#f1f5f9] text-[#475569]">
-                                    <th className="px-6 py-4 font-bold text-sm">First Name</th>
-                                    <th className="px-6 py-4 font-bold text-sm">Spouse Name</th>
-                                    <th className="px-6 py-4 font-bold text-sm">Last Name</th>
-                                    <th className="px-6 py-4 font-bold text-sm">Email</th>
-                                    <th className="px-6 py-4 font-bold text-sm">Phone</th>
-                                    <th className="px-6 py-4 font-bold text-sm text-right">
-                                        <span className="text-[#94a3b8] font-normal text-xs uppercase tracking-wider">
-                                            Showing {registrations.length} Records
-                                        </span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#e2e8f0]">
-                                {registrations
-                                    .filter(reg =>
-                                        Object.values(reg).some(v =>
-                                            String(v).toLowerCase().includes(gridSearch.toLowerCase())
-                                        )
-                                    )
-                                    .map(reg => (
-                                        <tr
-                                            key={reg.id}
-                                            className="hover:bg-[#f8fafc] transition-colors cursor-pointer group"
-                                            onClick={() => viewDetails(reg)}
-                                        >
-                                            <td className="px-6 py-5 text-[#1e293b] font-medium">{reg.first_name}</td>
-                                            <td className="px-6 py-5 text-[#475569]">{reg.spouse_first_name}</td>
-                                            <td className="px-6 py-5 text-[#475569]">{reg.last_name}</td>
-                                            <td className="px-6 py-5 text-[#475569] font-medium">{reg.email}</td>
-                                            <td className="px-6 py-5 text-[#475569] font-medium">{reg.phone}</td>
-                                            <td className="px-6 py-5 text-right">
-                                                <span className={`inline-block px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm ${reg.sponsorship_type === 'gold' ? 'bg-[#fef3c7] text-[#92400e]' :
+                        ) : registrations.length === 0 ? (
+                            <div className="py-20 text-center">
+                                <div className="text-[#94a3b8] text-lg mb-2">No registration records found</div>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table ref={tableRef} className="w-full display" style={{ width: '100%' }}>
+                                    <thead>
+                                        <tr className="bg-[#f1f5f9]">
+                                            <th className="px-4 py-4 text-left">
+                                                <input
+                                                    type="checkbox"
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedUsers(new Set(registrations.map(r => r.id)));
+                                                        } else {
+                                                            setSelectedUsers(new Set());
+                                                        }
+                                                    }}
+                                                    checked={selectedUsers.size === registrations.length && registrations.length > 0}
+                                                    className="w-5 h-5 rounded border-2 border-[#cbd5e1] text-[#3b82f6] focus:ring-2 focus:ring-[#60a5fa]"
+                                                />
+                                            </th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">First Name</th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">Spouse Name</th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">Last Name</th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">Email</th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">Phone</th>
+                                            <th className="px-4 py-4 text-left font-bold text-[#475569]">Sponsorship</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {registrations.map((reg) => (
+                                            <tr key={reg.id} className="border-t border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors">
+                                                <td className="px-4 py-4">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedUsers.has(reg.id)}
+                                                        onChange={() => handleCheckboxChange(reg.id)}
+                                                        className="w-5 h-5 rounded border-2 border-[#cbd5e1] text-[#3b82f6] focus:ring-2 focus:ring-[#60a5fa]"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-4 font-semibold text-[#1e293b]">{reg.first_name}</td>
+                                                <td className="px-4 py-4 text-[#475569]">{reg.spouse_first_name}</td>
+                                                <td className="px-4 py-4 text-[#475569]">{reg.last_name}</td>
+                                                <td className="px-4 py-4 text-[#475569]">{reg.email}</td>
+                                                <td className="px-4 py-4 text-[#475569]">{reg.phone}</td>
+                                                <td className="px-4 py-4">
+                                                    <span className={`inline-block px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm ${reg.sponsorship_type === 'gold' ? 'bg-[#fef3c7] text-[#92400e]' :
                                                         reg.sponsorship_type === 'silver' ? 'bg-[#e0f2fe] text-[#075985]' :
                                                             'bg-[#f1f5f9] text-[#475569]'
-                                                    }`}>
-                                                    {reg.sponsorship_type}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                            </tbody>
-                        </table>
-
-                        {(loading || registrations.length === 0) && (
-                            <div className="py-20 text-center text-[#94a3b8]">
-                                {loading ? 'Fetching data...' : 'No registration records found for the given criteria.'}
+                                                        }`}>
+                                                        {reg.sponsorship_type}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
-
-                    {selectedDate && registrations.length > 0 && (
-                        <div className="mt-8 flex justify-end">
-                            <button
-                                className="bg-[#3b82f6] text-white flex items-center gap-3 py-3 px-10 rounded-xl shadow-lg hover:bg-[#2563eb] active:scale-95 transition-all font-bold"
-                                onClick={async () => {
-                                    const res = await sendEmailReminder(selectedDate);
-                                    if (res.success) {
-                                        alert(`Successfully sent ${res.count} reminder emails!`);
-                                    }
-                                }}
-                            >
-                                <Mail size={20} /> Send Email Reminder
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
-
-            {/* Detailed Modal/View overlaps could be added here */}
-            {selectedReg && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl p-8 transform animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-start mb-8">
-                            <div>
-                                <h2 className="text-3xl font-black text-[#1e293b]">{selectedReg.first_name} {selectedReg.last_name}</h2>
-                                <p className="text-[#64748b]">Registered as <span className="text-[#3b82f6] font-bold uppercase">{selectedReg.sponsorship_type}</span></p>
-                            </div>
-                            <button onClick={() => setSelectedReg(null)} className="p-2 hover:bg-secondary rounded-full transition-colors">
-                                <ChevronRight className="rotate-90" />
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-6 mb-10">
-                            <div className="p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
-                                <span className="text-[10px] uppercase font-black text-[#94a3b8] tracking-widest block mb-1">Email</span>
-                                <span className="font-bold text-[#1e293b]">{selectedReg.email}</span>
-                            </div>
-                            <div className="p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
-                                <span className="text-[10px] uppercase font-black text-[#94a3b8] tracking-widest block mb-1">Phone</span>
-                                <span className="font-bold text-[#1e293b]">{selectedReg.phone}</span>
-                            </div>
-                            <div className="p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0] col-span-2">
-                                <span className="text-[10px] uppercase font-black text-[#94a3b8] tracking-widest block mb-1">Address</span>
-                                <span className="font-bold text-[#1e293b]">{selectedReg.address}</span>
-                            </div>
-                        </div>
-
-                        <button onClick={() => setSelectedReg(null)} className="w-full bg-[#1e293b] text-white py-4 rounded-xl font-bold shadow-lg hover:bg-black transition-all">
-                            Close Record
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

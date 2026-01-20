@@ -117,6 +117,21 @@ export async function getRegistrationDates(registrationId: string) {
     return db.prepare('SELECT * FROM registration_dates WHERE registration_id = ?').all(registrationId) as any[];
 }
 
+export async function getRegistrationEventsWithDetails(registrationId: string) {
+    return db.prepare(`
+        SELECT 
+            e.id as event_id,
+            e.name as event_name,
+            rd.date,
+            ed.title as date_title
+        FROM registration_dates rd
+        JOIN events e ON rd.event_id = e.id
+        LEFT JOIN event_dates ed ON rd.event_id = ed.event_id AND rd.date = ed.date
+        WHERE rd.registration_id = ?
+        ORDER BY e.sortOrder ASC, rd.date ASC
+    `).all(registrationId) as any[];
+}
+
 export async function searchRegistrations(query: string) {
     const q = `%${query}%`;
     return db.prepare(`
@@ -163,14 +178,25 @@ export async function deleteUser(id: string) {
     revalidatePath('/admin/users');
 }
 
-export async function sendEmailReminder(date: string) {
-    const registrants = db.prepare(`
-        SELECT r.first_name, r.last_name, r.email, e.name as event_name
+export async function sendEmailReminder(date: string, userIds?: string[]) {
+    let query = `
+        SELECT DISTINCT r.id, r.first_name, r.last_name, r.email, e.name as event_name
         FROM registrations r
         JOIN registration_dates rd ON r.id = rd.registration_id
         JOIN events e ON rd.event_id = e.id
         WHERE rd.date = ?
-    `).all(date) as any[];
+    `;
+
+    let params: any[] = [date];
+
+    // If specific user IDs are provided, filter by them
+    if (userIds && userIds.length > 0) {
+        const placeholders = userIds.map(() => '?').join(',');
+        query += ` AND r.id IN (${placeholders})`;
+        params = [date, ...userIds];
+    }
+
+    const registrants = db.prepare(query).all(...params) as any[];
 
     // Simulate sending emails
     console.log(`Sending ${registrants.length} reminder emails for date ${date}`);

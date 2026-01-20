@@ -12,6 +12,8 @@
     "@supabase/supabase-js": "^2.90.1",
     "better-sqlite3": "^12.6.0",
     "clsx": "^2.1.1",
+    "datatables.net-dt": "^2.3.6",
+    "datatables.net-responsive-dt": "^3.0.7",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.2",
