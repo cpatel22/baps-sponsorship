@@ -68,8 +68,8 @@ export default function UserManagement() {
         <div className="container">
             <header className="page-header flex justify-between items-center">
                 <div>
-                    <h1 className="page-title">Admin User Management</h1>
-                    <p className="page-description">Manage access, roles, and security settings for the admin portal.</p>
+                    <h1 className="page-title">User Management</h1>
+                    <p className="page-description hidden">Manage access, roles, and security settings for the admin portal.</p>
                 </div>
                 <button onClick={() => setShowAddForm(true)} className="btn-primary flex items-center gap-2">
                     <Plus size={18} /> Add New User
@@ -103,7 +103,7 @@ export default function UserManagement() {
                             </div>
                         </div>
 
-                        <div className="grid" style={{ gap: '0.5rem', fontSize: '0.875rem' }}>
+                        <div className="grid hidden" style={{ gap: '0.5rem', fontSize: '0.875rem' }}>
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <Mail size={14} /> Recovery: {user.recovery_email || 'Not set'}
                             </div>
@@ -141,7 +141,7 @@ export default function UserManagement() {
                                 </select>
                             </div>
 
-                            <div>
+                            <div className="hidden">
                                 <label className="label">Recovery Email</label>
                                 <input name="recovery_email" type="email" defaultValue={editingUser?.recovery_email} required />
                             </div>
@@ -149,7 +149,7 @@ export default function UserManagement() {
                             <div className="flex justify-end gap-3 mt-4">
                                 <button type="button" onClick={() => { setEditingUser(null); setShowAddForm(false); }} className="btn-secondary">Cancel</button>
                                 <button type="submit" className="btn-primary flex items-center gap-2">
-                                    <Save size={18} /> {editingUser ? 'Update User' : 'Create User'}
+                                    <Save size={18} /> {editingUser ? 'Update' : 'Save'}
                                 </button>
                             </div>
                         </form>
