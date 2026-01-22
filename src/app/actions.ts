@@ -3,6 +3,7 @@
 import db from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 export async function login(formData: FormData) {
     const email = formData.get('email') as string;
@@ -28,6 +29,7 @@ export async function logout() {
     const cookieStore = await cookies();
     cookieStore.delete('session');
     revalidatePath('/');
+    redirect('/');
 }
 
 export async function getCurrentUser() {

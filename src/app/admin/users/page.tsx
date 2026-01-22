@@ -17,7 +17,7 @@ export default function UserManagement() {
         async function checkAuth() {
             const user = await getCurrentUser();
             if (!user) {
-                router.push('/login');
+                router.push('/');
             }
         }
         checkAuth();

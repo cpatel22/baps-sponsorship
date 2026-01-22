@@ -38,7 +38,7 @@ export default function Lookup() {
         async function checkAuth() {
             const user = await getCurrentUser();
             if (!user) {
-                router.push('/login');
+                router.push('/');
             }
         }
         checkAuth();
