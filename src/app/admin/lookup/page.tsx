@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails, getRegistrationsByYear, getRegistrationsByDate } from '@/app/actions';
+import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails, getRegistrationsByYear, getRegistrationsByDate, getEmailTemplates } from '@/app/actions';
 import { format } from 'date-fns';
 import { Mail, Eye, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,11 @@ export default function Lookup() {
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    
+    // Email reminder states
+    const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [sendingEmail, setSendingEmail] = useState(false);
 
     // View Details Modal State
     const [viewingRegistration, setViewingRegistration] = useState<any | null>(null);
@@ -46,7 +51,20 @@ export default function Lookup() {
 
     useEffect(() => {
         loadAll();
+        loadEmailTemplates();
     }, [selectedDate]);
+
+    async function loadEmailTemplates() {
+        try {
+            const templates = await getEmailTemplates();
+            setEmailTemplates(templates);
+            if (templates.length > 0) {
+                setSelectedTemplateId(templates[0].id);
+            }
+        } catch (error) {
+            console.error('Error loading email templates:', error);
+        }
+    }
 
     useEffect(() => {
         // Load DataTables scripts and styles only once
@@ -234,6 +252,43 @@ export default function Lookup() {
         setSelectedUsers(newSelected);
     };
 
+    const handleSendEmailReminder = async () => {
+        if (selectedUsers.size === 0) {
+            alert('Please select at least one user to send email reminder.');
+            return;
+        }
+
+        if (!selectedTemplateId) {
+            alert('Please select an email template.');
+            return;
+        }
+
+        if (!confirm(`Send email reminder to ${selectedUsers.size} selected user(s)?`)) {
+            return;
+        }
+
+        setSendingEmail(true);
+        try {
+            const userIds = Array.from(selectedUsers);
+            const result = await sendEmailReminder(userIds, selectedTemplateId);
+            
+            if (result.success) {
+                let message = `✅ Email sent successfully to ${result.count} user(s)!`;
+                if (result.warning) {
+                    message += `\n\n⚠️ ${result.warning}`;
+                }
+                alert(message);
+                setSelectedUsers(new Set());
+            } else {
+                alert('❌ Failed to send emails: ' + result.error);
+            }
+        } catch (error: any) {
+            alert('❌ Error sending emails: ' + error.message);
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
     return (
         <div className="container min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#e0f2fe] py-12">
             <header className="mb-10 text-center">
@@ -350,6 +405,87 @@ export default function Lookup() {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+
+                        {/* Email Reminder Section */}
+                        {!loading && registrations.length > 0 && selectedUsers.size > 0 && (
+                            <div style={{ 
+                                borderTop: '2px solid #e2e8f0', 
+                                paddingTop: '1.5rem', 
+                                marginTop: '1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '1rem'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: '1', minWidth: '300px' }}>
+                                    <label className="font-semibold text-[#475569]">
+                                        Send Email to {selectedUsers.size} selected user(s):
+                                    </label>
+                                    <select
+                                        value={selectedTemplateId}
+                                        onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                        className="flex-1 max-w-xs"
+                                        style={{
+                                            padding: '0.5rem 0.75rem',
+                                            borderRadius: '0.5rem',
+                                            border: '2px solid #cbd5e1',
+                                            backgroundColor: 'white',
+                                            color: '#1e293b',
+                                            fontSize: '0.875rem',
+                                            fontWeight: '500',
+                                            cursor: 'pointer',
+                                            outline: 'none',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        disabled={sendingEmail}
+                                    >
+                                        {emailTemplates.length === 0 ? (
+                                            <option value="">No templates available</option>
+                                        ) : (
+                                            emailTemplates.map((template) => (
+                                                <option key={template.id} value={template.id}>
+                                                    {template.name}
+                                                </option>
+                                            ))
+                                        )}
+                                    </select>
+                                </div>
+
+                                <button
+                                    onClick={handleSendEmailReminder}
+                                    disabled={sendingEmail || !selectedTemplateId || emailTemplates.length === 0}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.75rem 1.5rem',
+                                        borderRadius: '0.75rem',
+                                        backgroundColor: sendingEmail ? '#94a3b8' : '#3b82f6',
+                                        color: 'white',
+                                        border: 'none',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '600',
+                                        cursor: sendingEmail ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 4px 6px rgba(59, 130, 246, 0.3)',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    className="hover:bg-[#2563eb] disabled:hover:bg-[#94a3b8]"
+                                >
+                                    {sendingEmail ? (
+                                        <>
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                            Sending...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Mail size={18} />
+                                            Send Email Reminder
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         )}
                     </div>

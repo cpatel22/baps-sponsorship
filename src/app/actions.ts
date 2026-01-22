@@ -187,33 +187,110 @@ export async function deleteUser(id: string) {
     revalidatePath('/admin/users');
 }
 
-export async function sendEmailReminder(date: string, userIds?: string[]) {
-    let query = `
-        SELECT DISTINCT r.id, r.first_name, r.last_name, r.email, e.name as event_name
-        FROM registrations r
-        JOIN registration_dates rd ON r.id = rd.registration_id
-        JOIN events e ON rd.event_id = e.id
-        WHERE rd.date = ?
-    `;
-
-    let params: any[] = [date];
-
-    // If specific user IDs are provided, filter by them
-    if (userIds && userIds.length > 0) {
-        const placeholders = userIds.map(() => '?').join(',');
-        query += ` AND r.id IN (${placeholders})`;
-        params = [date, ...userIds];
+export async function sendEmailReminder(userIds: string[], templateId: string) {
+    // Get the email template
+    const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(templateId) as any;
+    if (!template) {
+        return { success: false, error: 'Email template not found' };
     }
 
-    const registrants = db.prepare(query).all(...params) as any[];
+    // Get email settings
+    const emailSettings = db.prepare('SELECT * FROM email_settings WHERE id = 1').get() as any;
+    if (!emailSettings) {
+        return { success: false, error: 'Email settings not configured. Please configure email settings first.' };
+    }
 
-    // Simulate sending emails
-    console.log(`Sending ${registrants.length} reminder emails for date ${date}`);
-    registrants.forEach(reg => {
-        console.log(`To: ${reg.email} - Dear ${reg.first_name}, reminder for ${reg.event_name} on ${date}`);
-    });
+    // Get registrations for the selected users
+    const placeholders = userIds.map(() => '?').join(',');
+    const query = `
+        SELECT DISTINCT r.*
+        FROM registrations r
+        WHERE r.id IN (${placeholders})
+    `;
 
-    return { success: true, count: registrants.length };
+    const registrants = db.prepare(query).all(...userIds) as any[];
+
+    if (registrants.length === 0) {
+        return { success: false, error: 'No users found' };
+    }
+
+    try {
+        // Import nodemailer
+        const nodemailer = await import('nodemailer');
+        
+        // Determine port and security based on settings
+        const port = emailSettings.connection_security === 'SSL' ? emailSettings.smtp_port_ssl : emailSettings.smtp_port_tls;
+        const secure = emailSettings.connection_security === 'SSL';
+        
+        // Create transporter
+        const transporter = nodemailer.default.createTransport({
+            host: emailSettings.smtp_server,
+            port: port,
+            secure: secure,
+            auth: {
+                user: emailSettings.smtp_username,
+                pass: emailSettings.smtp_password,
+            },
+        });
+
+        let successCount = 0;
+        let failedEmails: string[] = [];
+
+        // Send email to each registrant
+        for (const reg of registrants) {
+            try {
+                // Replace placeholders in template
+                const replacePlaceholders = (text: string) => {
+                    if (!text) return '';
+                    return text
+                        .replace(/\{\{first_name\}\}/g, reg.first_name || '')
+                        .replace(/\{\{spouse_first_name\}\}/g, reg.spouse_first_name || '')
+                        .replace(/\{\{last_name\}\}/g, reg.last_name || '')
+                        .replace(/\{\{email\}\}/g, reg.email || '')
+                        .replace(/\{\{phone\}\}/g, reg.phone || '')
+                        .replace(/\{\{address\}\}/g, reg.address || '')
+                        .replace(/\{\{sponsorship_type\}\}/g, reg.sponsorship_type || '');
+                };
+
+                const toEmail = replacePlaceholders(template.to_field) || reg.email;
+                const subject = replacePlaceholders(template.subject);
+                const body = replacePlaceholders(template.body);
+                const ccEmail = template.cc_field ? replacePlaceholders(template.cc_field) : undefined;
+                const bccEmail = template.bcc_field ? replacePlaceholders(template.bcc_field) : undefined;
+
+                await transporter.sendMail({
+                    from: emailSettings.email_from,
+                    to: toEmail,
+                    cc: ccEmail,
+                    bcc: bccEmail,
+                    replyTo: emailSettings.reply_to_email || emailSettings.email_from,
+                    subject: subject,
+                    html: body
+                });
+
+                successCount++;
+            } catch (error: any) {
+                console.error(`Failed to send email to ${reg.email}:`, error.message);
+                failedEmails.push(reg.email);
+            }
+        }
+
+        if (failedEmails.length > 0) {
+            return { 
+                success: true, 
+                count: successCount,
+                warning: `${failedEmails.length} email(s) failed to send: ${failedEmails.join(', ')}`
+            };
+        }
+
+        return { success: true, count: successCount };
+    } catch (error: any) {
+        console.error('Email sending error:', error);
+        return { 
+            success: false, 
+            error: `Failed to send emails: ${error.message}`
+        };
+    }
 }
 
 export async function getEmailTemplates() {
