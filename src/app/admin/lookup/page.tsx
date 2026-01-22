@@ -245,7 +245,7 @@ export default function Lookup() {
                 {/* Date Filter */}
                 <div className="flex justify-end px-4">
                     <div className="relative flex items-center gap-3">
-                       <label className="text-[#475569] font-semibold text-base">Select Date:</label>
+                       <label className="text-[#475569] font-semibold text-base hidden">Select Date:</label>
                         <input
                             type="date"
                             value={selectedDate}
