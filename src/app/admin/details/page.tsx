@@ -37,7 +37,7 @@ export default function Lookup() {
     useEffect(() => {
         async function checkAuth() {
             const user = await getCurrentUser();
-            if (!user) {
+            if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
                 router.push('/');
             }
         }
