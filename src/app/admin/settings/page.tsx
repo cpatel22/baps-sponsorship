@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getCurrentUser } from '@/app/actions';
+import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getCurrentUser, getEmailSettings, saveEmailSettings, testEmailConfiguration } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -9,7 +9,7 @@ import { Underline } from '@tiptap/extension-underline';
 import { Image } from '@tiptap/extension-image';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
-import { Save, Trash2, Plus, X, Image as ImageIcon, Minus } from 'lucide-react';
+import { Save, Trash2, Plus, X, Image as ImageIcon, Minus, Mail, CheckCircle2 } from 'lucide-react';
 
 const PLACEHOLDER_FIELDS = [
     { label: 'First Name', value: '{{first_name}}' },
@@ -36,6 +36,19 @@ export default function Settings() {
     const [showNewForm, setShowNewForm] = useState(false);
     const [focusedField, setFocusedField] = useState<'to' | 'cc' | 'bcc' | 'subject' | 'body'>('body');
     const [subjectCursorPos, setSubjectCursorPos] = useState(0);
+    const [activeTab, setActiveTab] = useState<'email-settings' | 'email-template'>('email-settings');
+    
+    // Email Settings states
+    const [emailFrom, setEmailFrom] = useState('');
+    const [smtpServer, setSmtpServer] = useState('smtp.gmail.com');
+    const [smtpPortTLS, setSmtpPortTLS] = useState(587);
+    const [smtpPortSSL, setSmtpPortSSL] = useState(465);
+    const [smtpUsername, setSmtpUsername] = useState('');
+    const [smtpPassword, setSmtpPassword] = useState('');
+    const [connectionSecurity, setConnectionSecurity] = useState('TLS');
+    const [replyToEmail, setReplyToEmail] = useState('');
+    const [testingEmail, setTestingEmail] = useState(false);
+    
     const router = useRouter();
 
     const editor = useEditor({
@@ -67,7 +80,22 @@ export default function Settings() {
 
     useEffect(() => {
         loadTemplates();
+        loadEmailSettings();
     }, []);
+
+    async function loadEmailSettings() {
+        const settings = await getEmailSettings();
+        if (settings) {
+            setEmailFrom(settings.email_from || '');
+            setSmtpServer(settings.smtp_server || 'smtp.gmail.com');
+            setSmtpPortTLS(settings.smtp_port_tls || 587);
+            setSmtpPortSSL(settings.smtp_port_ssl || 465);
+            setSmtpUsername(settings.smtp_username || '');
+            setSmtpPassword(settings.smtp_password || '');
+            setConnectionSecurity(settings.connection_security || 'TLS');
+            setReplyToEmail(settings.reply_to_email || '');
+        }
+    }
 
     async function loadTemplates() {
         const data = await getEmailTemplates();
@@ -167,20 +195,269 @@ export default function Settings() {
         editor?.commands.setContent('');
     }
 
+    async function handleSaveEmailSettings() {
+        const result = await saveEmailSettings({
+            emailFrom,
+            smtpServer,
+            smtpPortTLS,
+            smtpPortSSL,
+            smtpUsername,
+            smtpPassword,
+            connectionSecurity,
+            replyToEmail
+        });
+        
+        if (result.success) {
+            alert('Email settings saved successfully!');
+        }
+    }
+
+    async function handleTestEmailConfiguration() {
+        if (!emailFrom || !smtpServer || !smtpUsername || !smtpPassword) {
+            alert('Please fill in all required fields before testing.');
+            return;
+        }
+
+        const testEmailTo = prompt('Enter email address to send test email to:', smtpUsername);
+        if (!testEmailTo) return;
+
+        setTestingEmail(true);
+        try {
+            const result = await testEmailConfiguration({
+                emailFrom,
+                smtpServer,
+                smtpPortTLS,
+                smtpPortSSL,
+                smtpUsername,
+                smtpPassword,
+                connectionSecurity,
+                replyToEmail,
+                testEmailTo
+            });
+
+            if (result.success) {
+                alert('✅ ' + result.message);
+            } else {
+                alert('❌ ' + result.message);
+            }
+        } catch (error: any) {
+            alert('❌ Failed to test email configuration: ' + error.message);
+        } finally {
+            setTestingEmail(false);
+        }
+    }
+
     if (loading) return <div className="container">Loading...</div>;
 
     return (
         <div className="container">
             <header className="page-header">
-                <h1 className="page-title">Email Template Settings</h1>
-                <p className="page-description">Create and manage custom email templates with dynamic fields.</p>
+                <h1 className="page-title">Settings</h1>
+                <p className="page-description hidden">Settings</p>
             </header>
 
-            <div className="grid" style={{ gridTemplateColumns: '300px 1fr', gap: '2rem', alignItems: 'start' }}>
-                <div>
+            <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+                {/* Tab Navigation */}
+                <div style={{ 
+                    display: 'flex', 
+                    gap: '0.5rem', 
+                    borderBottom: '2px solid #e2e8f0',
+                    marginBottom: '2rem'
+                }}>
+                    <button
+                        onClick={() => setActiveTab('email-settings')}
+                        className={activeTab === 'email-settings' ? 'btn-primary' : 'btn-secondary'}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            borderRadius: '0.5rem 0.5rem 0 0',
+                            borderBottom: activeTab === 'email-settings' ? '3px solid #3b82f6' : 'none',
+                            marginBottom: '-2px'
+                        }}
+                    >
+                        Email Settings
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('email-template')}
+                        className={activeTab === 'email-template' ? 'btn-primary' : 'btn-secondary'}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            borderRadius: '0.5rem 0.5rem 0 0',
+                            borderBottom: activeTab === 'email-template' ? '3px solid #3b82f6' : 'none',
+                            marginBottom: '-2px'
+                        }}
+                    >
+                        Email Template
+                    </button>
+                </div>
+
+                {/* Email Settings Tab */}
+                {activeTab === 'email-settings' && (
+                    <div className="card">
+                        <h2 className="text-lg font-bold mb-4">Email Settings</h2>
+                        
+                        <div className="flex" style={{ flexDirection: 'column', gap: '1.5rem' }}>
+                            <div>
+                                <label className="block mb-2 font-medium">Email From</label>
+                                <input
+                                    type="email"
+                                    value={emailFrom}
+                                    onChange={(e) => setEmailFrom(e.target.value)}
+                                    placeholder="e.g., noreply@yourdomain.com"
+                                    style={{ width: '100%' }}
+                                />
+                                <p className="text-sm text-muted-foreground mt-1">The email address that will appear as the sender</p>
+                            </div>
+
+                            <div>
+                                <label className="block mb-2 font-medium">SMTP Server Address</label>
+                                <input
+                                    type="text"
+                                    value={smtpServer}
+                                    onChange={(e) => setSmtpServer(e.target.value)}
+                                    placeholder="smtp.gmail.com"
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label className="block mb-2 font-medium">SMTP Port (TLS)</label>
+                                    <input
+                                        type="number"
+                                        value={smtpPortTLS}
+                                        onChange={(e) => setSmtpPortTLS(parseInt(e.target.value) || 587)}
+                                        placeholder="587"
+                                        style={{ width: '100%' }}
+                                    />
+                                    <p className="text-sm text-muted-foreground mt-1">Recommended</p>
+                                </div>
+
+                                <div>
+                                    <label className="block mb-2 font-medium">SMTP Port (SSL)</label>
+                                    <input
+                                        type="number"
+                                        value={smtpPortSSL}
+                                        onChange={(e) => setSmtpPortSSL(parseInt(e.target.value) || 465)}
+                                        placeholder="465"
+                                        style={{ width: '100%' }}
+                                    />
+                                    <p className="text-sm text-muted-foreground mt-1">Alternative</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block mb-2 font-medium">Authentication</label>
+                                <div style={{ 
+                                    padding: '0.75rem', 
+                                    backgroundColor: '#f1f5f9', 
+                                    borderRadius: '0.375rem',
+                                    border: '1px solid #e2e8f0'
+                                }}>
+                                    <strong>Required: Yes</strong>
+                                    <p className="text-sm text-muted-foreground mt-1">SMTP authentication is required for sending emails</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block mb-2 font-medium">Username</label>
+                                <input
+                                    type="text"
+                                    value={smtpUsername}
+                                    onChange={(e) => setSmtpUsername(e.target.value)}
+                                    placeholder="user@gmail.com"
+                                    style={{ width: '100%' }}
+                                />
+                                <p className="text-sm text-muted-foreground mt-1">Your full Gmail address</p>
+                            </div>
+
+                            <div>
+                                <label className="block mb-2 font-medium">Password</label>
+                                <input
+                                    type="password"
+                                    value={smtpPassword}
+                                    onChange={(e) => setSmtpPassword(e.target.value)}
+                                    placeholder="App Password (16-character code)"
+                                    style={{ width: '100%' }}
+                                />
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Your App Password (16-character code). 
+                                    <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline ml-1">
+                                        Generate App Password
+                                    </a>
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block mb-2 font-medium">Connection Security</label>
+                                <select
+                                    value={connectionSecurity}
+                                    onChange={(e) => setConnectionSecurity(e.target.value)}
+                                    style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db' }}
+                                >
+                                    <option value="TLS">TLS (Recommended)</option>
+                                    <option value="SSL">SSL</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block mb-2 font-medium">Default Reply-To Email</label>
+                                <input
+                                    type="email"
+                                    value={replyToEmail}
+                                    onChange={(e) => setReplyToEmail(e.target.value)}
+                                    placeholder="e.g., support@yourdomain.com"
+                                    style={{ width: '100%' }}
+                                />
+                                <p className="text-sm text-muted-foreground mt-1">Email address for replies (optional)</p>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', paddingTop: '1rem' }}>
+                                <button
+                                    onClick={handleTestEmailConfiguration}
+                                    className="btn-secondary"
+                                    disabled={testingEmail}
+                                    style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '0.5rem',
+                                        backgroundColor: testingEmail ? '#d1d5db' : '#10b981',
+                                        color: 'white',
+                                        border: 'none'
+                                    }}
+                                    title="Send test email to verify configuration"
+                                >
+                                    {testingEmail ? (
+                                        <>
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                            Testing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle2 size={18} />
+                                            Test Configuration
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleSaveEmailSettings}
+                                    className="btn-primary"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                >
+                                    <Save size={18} />
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Email Template Tab */}
+                {activeTab === 'email-template' && (
+                <div className="grid" style={{ gridTemplateColumns: '300px minmax(0, 1fr)', gap: '2rem', alignItems: 'start', width: '100%' }}>
+                <div style={{ width: '300px', flexShrink: 0 }}>
                     <div className="card">
                         <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-bold">Templates</h2>
+                            <h2 className="text-lg font-bold">Email Templates</h2>
                             <button
                                 onClick={handleNewTemplate}
                                 className="btn-primary"
@@ -218,7 +495,7 @@ export default function Settings() {
                 </div>
 
                 {showNewForm && (
-                    <div className="card">
+                    <div className="card" style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-bold">
                                 {selectedTemplate ? 'Edit Template' : 'New Template'}
@@ -481,7 +758,7 @@ export default function Settings() {
                 )}
 
                 {!showNewForm && (
-                    <div className="card">
+                    <div className="card" style={{ minWidth: 0, maxWidth: '100%' }}>
                         <div className="flex items-center justify-center" style={{ minHeight: '400px', color: 'var(--muted-foreground)' }}>
                             <div className="text-center">
                                 <p className="text-lg mb-2">No template selected</p>
@@ -490,6 +767,8 @@ export default function Settings() {
                         </div>
                     </div>
                 )}
+            </div>
+            )}
             </div>
 
             <style jsx global>{`

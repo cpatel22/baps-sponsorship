@@ -60,6 +60,19 @@ db.exec(`
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS email_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    email_from TEXT NOT NULL,
+    smtp_server TEXT NOT NULL,
+    smtp_port_tls INTEGER DEFAULT 587,
+    smtp_port_ssl INTEGER DEFAULT 465,
+    smtp_username TEXT NOT NULL,
+    smtp_password TEXT NOT NULL,
+    connection_security TEXT DEFAULT 'TLS',
+    reply_to_email TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Add columns to existing email_templates table if they don't exist

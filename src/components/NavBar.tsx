@@ -33,6 +33,7 @@ export default function NavBar({ user }: NavBarProps) {
                                 <Link href="/admin/details" className="nav-link">Details</Link>
                                 <Link href="/admin/lookup" className="nav-link">Lookup</Link>
                                 <Link href="/admin/users" className="nav-link">Users</Link>
+                                <Link href="/admin/settings" className="nav-link">Settings</Link>
 
                                 <div className="flex items-center gap-4 ml-4 pl-4" style={{ borderLeft: '1px solid var(--border)' }}>
                                     <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">

@@ -265,3 +265,136 @@ export async function deleteEmailTemplate(id: string) {
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(id);
     revalidatePath('/admin/settings');
 }
+
+export async function getEmailSettings() {
+    return db.prepare('SELECT * FROM email_settings WHERE id = 1').get() as {
+        id: number,
+        email_from: string,
+        smtp_server: string,
+        smtp_port_tls: number,
+        smtp_port_ssl: number,
+        smtp_username: string,
+        smtp_password: string,
+        connection_security: string,
+        reply_to_email: string,
+        updated_at: string
+    } | undefined;
+}
+
+export async function saveEmailSettings(settings: {
+    emailFrom: string,
+    smtpServer: string,
+    smtpPortTLS: number,
+    smtpPortSSL: number,
+    smtpUsername: string,
+    smtpPassword: string,
+    connectionSecurity: string,
+    replyToEmail: string
+}) {
+    const existing = db.prepare('SELECT * FROM email_settings WHERE id = 1').get();
+    
+    if (existing) {
+        db.prepare(`
+            UPDATE email_settings 
+            SET email_from = ?, smtp_server = ?, smtp_port_tls = ?, smtp_port_ssl = ?,
+                smtp_username = ?, smtp_password = ?, connection_security = ?, reply_to_email = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+        `).run(
+            settings.emailFrom,
+            settings.smtpServer,
+            settings.smtpPortTLS,
+            settings.smtpPortSSL,
+            settings.smtpUsername,
+            settings.smtpPassword,
+            settings.connectionSecurity,
+            settings.replyToEmail
+        );
+    } else {
+        db.prepare(`
+            INSERT INTO email_settings (
+                id, email_from, smtp_server, smtp_port_tls, smtp_port_ssl,
+                smtp_username, smtp_password, connection_security, reply_to_email
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            settings.emailFrom,
+            settings.smtpServer,
+            settings.smtpPortTLS,
+            settings.smtpPortSSL,
+            settings.smtpUsername,
+            settings.smtpPassword,
+            settings.connectionSecurity,
+            settings.replyToEmail
+        );
+    }
+    
+    revalidatePath('/admin/settings');
+    return { success: true };
+}
+
+export async function testEmailConfiguration(settings: {
+    emailFrom: string,
+    smtpServer: string,
+    smtpPortTLS: number,
+    smtpPortSSL: number,
+    smtpUsername: string,
+    smtpPassword: string,
+    connectionSecurity: string,
+    replyToEmail: string,
+    testEmailTo: string
+}) {
+    try {
+        // Import nodemailer dynamically
+        const nodemailer = await import('nodemailer');
+        
+        // Determine which port to use based on connection security
+        const port = settings.connectionSecurity === 'SSL' ? settings.smtpPortSSL : settings.smtpPortTLS;
+        const secure = settings.connectionSecurity === 'SSL'; // true for SSL (465), false for TLS (587)
+        
+        // Create transporter
+        const transporter = nodemailer.default.createTransport({
+            host: settings.smtpServer,
+            port: port,
+            secure: secure,
+            auth: {
+                user: settings.smtpUsername,
+                pass: settings.smtpPassword,
+            },
+        });
+
+        // Send test email
+        const info = await transporter.sendMail({
+            from: settings.emailFrom,
+            to: settings.testEmailTo,
+            replyTo: settings.replyToEmail || settings.emailFrom,
+            subject: 'Test Email - Configuration Verification',
+            text: 'This is a test email to verify your SMTP configuration is working correctly.',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h2>Email Configuration Test</h2>
+                    <p>Congratulations! Your email configuration is working correctly.</p>
+                    <hr style="margin: 20px 0;">
+                    <p style="color: #666; font-size: 14px;">
+                        This test email was sent from your sponsorship management system.<br>
+                        <strong>SMTP Server:</strong> ${settings.smtpServer}<br>
+                        <strong>Port:</strong> ${port}<br>
+                        <strong>Connection Security:</strong> ${settings.connectionSecurity}
+                    </p>
+                </div>
+            `
+        });
+
+        return { 
+            success: true, 
+            message: 'Test email sent successfully! Please check the inbox.',
+            messageId: info.messageId 
+        };
+    } catch (error: any) {
+        console.error('Email test failed:', error);
+        return { 
+            success: false, 
+            message: `Failed to send test email: ${error.message || 'Unknown error'}`,
+            error: error.message 
+        };
+    }
+}
