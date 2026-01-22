@@ -215,3 +215,53 @@ export async function sendEmailReminder(date: string, userIds?: string[]) {
 
     return { success: true, count: registrants.length };
 }
+
+export async function getEmailTemplates() {
+    return db.prepare('SELECT * FROM email_templates ORDER BY created_at DESC').all() as {
+        id: string,
+        name: string,
+        to_field: string,
+        cc_field: string,
+        bcc_field: string,
+        subject: string,
+        body: string,
+        created_at: string,
+        updated_at: string
+    }[];
+}
+
+export async function getEmailTemplate(id: string) {
+    return db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id) as {
+        id: string,
+        name: string,
+        to_field: string,
+        cc_field: string,
+        bcc_field: string,
+        subject: string,
+        body: string,
+        created_at: string,
+        updated_at: string
+    } | undefined;
+}
+
+export async function saveEmailTemplate(id: string | null, name: string, toField: string, ccField: string, bccField: string, subject: string, body: string) {
+    if (id) {
+        // Update existing template
+        db.prepare('UPDATE email_templates SET name = ?, to_field = ?, cc_field = ?, bcc_field = ?, subject = ?, body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(name, toField, ccField, bccField, subject, body, id);
+        revalidatePath('/admin/settings');
+        return { success: true, id };
+    } else {
+        // Create new template
+        const newId = Math.random().toString(36).substring(2, 11);
+        db.prepare('INSERT INTO email_templates (id, name, to_field, cc_field, bcc_field, subject, body) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .run(newId, name, toField, ccField, bccField, subject, body);
+        revalidatePath('/admin/settings');
+        return { success: true, id: newId };
+    }
+}
+
+export async function deleteEmailTemplate(id: string) {
+    db.prepare('DELETE FROM email_templates WHERE id = ?').run(id);
+    revalidatePath('/admin/settings');
+}

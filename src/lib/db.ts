@@ -48,7 +48,44 @@ db.exec(`
     recovery_email TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS email_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    to_field TEXT DEFAULT '{{email}}',
+    cc_field TEXT,
+    bcc_field TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// Add columns to existing email_templates table if they don't exist
+try {
+  db.exec(`
+    ALTER TABLE email_templates ADD COLUMN to_field TEXT DEFAULT '{{email}}';
+  `);
+} catch (e) {
+  // Column already exists, ignore error
+}
+
+try {
+  db.exec(`
+    ALTER TABLE email_templates ADD COLUMN cc_field TEXT;
+  `);
+} catch (e) {
+  // Column already exists, ignore error
+}
+
+try {
+  db.exec(`
+    ALTER TABLE email_templates ADD COLUMN bcc_field TEXT;
+  `);
+} catch (e) {
+  // Column already exists, ignore error
+}
 
 // Seed initial events and super admin if they don't exist
 const seed = () => {

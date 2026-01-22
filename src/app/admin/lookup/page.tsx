@@ -241,6 +241,7 @@ export default function Lookup() {
                 <p className="text-[#64748b] text-lg hidden">Manage and monitor event registrations with ease.</p>
             </header>
 
+
             <div className="max-w-7xl mx-auto space-y-8">
                 {/* Date Filter */}
                 <div className="flex justify-end px-4">
