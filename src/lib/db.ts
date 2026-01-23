@@ -3,10 +3,31 @@ import path from 'path';
 
 const DB_PATH = path.join(process.cwd(), 'sponsorship.db');
 
-const db = new Database(DB_PATH);
+let db: Database.Database | null = null;
+let initialized = false;
+
+// Lazy initialization of the database
+function getDB(): Database.Database {
+  if (db && initialized) return db;
+
+  db = new Database(DB_PATH);
+  
+  if (!initialized) {
+    initializeSchema();
+    migrateRegistrationDates();
+    migrateEmailTemplates();
+    seed();
+    initialized = true;
+  }
+
+  return db;
+}
 
 // Initialize database schema
-db.exec(`
+function initializeSchema() {
+  if (!db) return;
+
+  db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL
@@ -75,34 +96,42 @@ db.exec(`
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
+}
 
 // Add columns to existing email_templates table if they don't exist
-try {
-  db.exec(`
-    ALTER TABLE email_templates ADD COLUMN to_field TEXT DEFAULT '{{email}}';
-  `);
-} catch (e) {
-  // Column already exists, ignore error
-}
+function migrateEmailTemplates() {
+  if (!db) return;
 
-try {
-  db.exec(`
-    ALTER TABLE email_templates ADD COLUMN cc_field TEXT;
-  `);
-} catch (e) {
-  // Column already exists, ignore error
-}
+  try {
+    db.exec(`
+      ALTER TABLE email_templates ADD COLUMN to_field TEXT DEFAULT '{{email}}';
+    `);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
 
-try {
-  db.exec(`
-    ALTER TABLE email_templates ADD COLUMN bcc_field TEXT;
-  `);
-} catch (e) {
-  // Column already exists, ignore error
+  try {
+    db.exec(`
+      ALTER TABLE email_templates ADD COLUMN cc_field TEXT;
+    `);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+
+  try {
+    db.exec(`
+      ALTER TABLE email_templates ADD COLUMN bcc_field TEXT;
+    `);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
 }
 
 // Migrate registration_dates table to make date nullable and add quantity
-try {
+function migrateRegistrationDates() {
+  if (!db) return;
+
+  try {
   // Check if the old schema exists (date is NOT NULL)
   const tableInfo = db.prepare("PRAGMA table_info(registration_dates)").all() as any[];
   const dateColumn = tableInfo.find((col: any) => col.name === 'date');
@@ -135,12 +164,15 @@ try {
       ALTER TABLE registration_dates_new RENAME TO registration_dates;
     `);
   }
-} catch (e) {
-  console.log('Registration_dates migration skipped or already applied:', e);
+  } catch (e) {
+    console.log('Registration_dates migration skipped or already applied:', e);
+  }
 }
 
 // Seed initial events and super admin if they don't exist
-const seed = () => {
+function seed() {
+  if (!db) return;
+
   const eventCount = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number };
   if (eventCount.count === 0) {
     const insert = db.prepare('INSERT INTO events (id, name) VALUES (?, ?)');
@@ -161,8 +193,7 @@ const seed = () => {
       'recovery@example.com'
     );
   }
-};
+}
 
-seed();
-
-export default db;
+// Export the lazy getter function as default
+export default getDB();

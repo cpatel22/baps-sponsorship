@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "chirag": "npm rebuild better-sqlite3 && next build"
+    "chirag": "npm rebuild better-sqlite3 && next build",
+    "postinstall": "npm rebuild better-sqlite3"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",
