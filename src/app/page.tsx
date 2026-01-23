@@ -226,7 +226,7 @@ export default function Home() {
     <div className="container">
       <header className="page-header" style={{ textAlign: 'center' }}>
         <h1 className="page-title">Samaiya/Festival Events Sponsorship</h1>
-        <p className="page-description">Join us in making these events successful.</p>
+        <p className="page-description hidden">Join us in making these events successful.</p>
       </header>
 
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
