@@ -200,7 +200,14 @@ export default function Home() {
       }
     });
 
-    const result = await registerSponsorship(formData, mergedSelections);
+    // Add step2 and step3 data to formData for email
+    const completeFormData = {
+      ...formData,
+      step2Selections,
+      step3Limits
+    };
+
+    const result = await registerSponsorship(completeFormData, mergedSelections);
     if (result.success) {
       setSubmitted(true);
     }
@@ -235,6 +242,7 @@ export default function Home() {
           <div className={`step-indicator ${step >= 1 ? 'active' : ''}`}>1</div>
           <div className={`step-indicator ${step >= 2 ? 'active' : ''}`}>2</div>
           <div className={`step-indicator ${step >= 3 ? 'active' : ''}`}>3</div>
+          <div className={`step-indicator ${step >= 4 ? 'active' : ''}`}>4</div>
         </div>
 
         {step === 1 && (
@@ -419,7 +427,7 @@ export default function Home() {
 
                 return (
                   <div key={event.id} className="card" style={{ padding: '1.25rem' }}>
-                    <div className="grid" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
+                    <div className="table-cell" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
                       <h4 className="font-bold text-lg">
                         {event.name} {event.individualCost > 0 && (
                           <span className="text-sm font-normal text-muted-foreground ml-1">
@@ -503,11 +511,11 @@ export default function Home() {
                                 }
                               }}
                               className={`px-4 h-full text-xs font-bold transition-all border-l border-[#d1d5db] ${isAllSelected
-                                ? 'bg-primary text-white'
+                                ? 'bg-destructive text-white hover:bg-destructive/90'
                                 : 'bg-white text-primary hover:bg-primary/5'
                                 }`}
                             >
-                              ALL
+                              {isAllSelected ? 'CLEAR' : 'ALL'}
                             </button>
                           )}
                         </div>
@@ -583,6 +591,136 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setStep(2)}
+                className="btn-secondary"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                className="btn-primary"
+              >
+                Review Summary
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="card grid">
+            <h2 className="text-xl font-bold">Step 4: Order Summary</h2>
+            <p className="text-sm text-muted-foreground">Review your sponsorship details before submitting.</p>
+
+            {/* Contact Information */}
+            <div className="card" style={{ background: 'var(--secondary)', padding: '1rem' }}>
+              <h3 className="font-bold text-lg mb-3">Contact Information</h3>
+              <div className="grid" style={{ gap: '0.5rem', fontSize: '0.9rem' }}>
+                <div><strong>Name:</strong> {formData.firstName} & {formData.spouseFirstName} {formData.lastName}</div>
+                <div><strong>Address:</strong> {formData.address}</div>
+                <div><strong>Phone:</strong> {formData.phone}</div>
+                <div><strong>Email:</strong> {formData.email}</div>
+              </div>
+            </div>
+
+            {/* Sponsorship Plan */}
+            {formData.sponsorshipType && (
+              <div className="card" style={{ background: 'var(--secondary)', padding: '1rem' }}>
+                <h3 className="font-bold text-lg mb-2">Sponsorship Plan</h3>
+                <div className="text-base">
+                  {SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType)?.name}
+                </div>
+                <div className="text-right mt-2 pt-2 border-t border-border">
+                  <span className="text-lg font-bold text-primary">
+                    ${SPONSORSHIP_PLANS.find(p => p.id === formData.sponsorshipType)?.price || 0}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2 Selections */}
+            {Object.keys(step2Selections).some(eventId => step2Selections[eventId]?.length > 0) && (
+              <div className="card" style={{ background: 'var(--secondary)', padding: '1rem' }}>
+                <h3 className="font-bold text-lg mb-3">Plan Event Selections</h3>
+                {events.map(event => {
+                  const selections = step2Selections[event.id] || [];
+                  if (selections.length === 0) return null;
+                  return (
+                    <div key={event.id} className="mb-3 pb-3 border-b border-border last:border-0 last:mb-0 last:pb-0">
+                      <div className="font-semibold text-base mb-2">{event.name}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {selections.map(date => {
+                          const dateObj = availableDates[event.id]?.find(d => d.date === date);
+                          return (
+                            <span key={date} className="text-xs px-2 py-1 bg-white rounded-full border border-primary text-primary">
+                              {format(new Date(date + 'T12:00:00'), 'MMM d, yyyy')}
+                              {dateObj?.title && ` - ${dateObj.title}`}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="text-right mt-2 text-sm">
+                        <span className="font-semibold">{selections.length} date{selections.length > 1 ? 's' : ''}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Step 3 Individual Event Selections */}
+            {(Object.keys(step3Limits).some(eventId => step3Limits[eventId] === 'ALL' || (step3Limits[eventId] as number) > 0)) && (
+              <div className="card" style={{ background: 'var(--secondary)', padding: '1rem' }}>
+                <h3 className="font-bold text-lg mb-3">Individual Event Selections</h3>
+                {events.map(event => {
+                  const limit = step3Limits[event.id];
+                  const isAllSelected = limit === 'ALL';
+                  const selections = step3Selections[event.id] || [];
+                  const individualCost = isAllSelected ? event.allCost : (limit as number) * (event.individualCost || 0);
+                  
+                  // Skip if no limit or limit is 0
+                  if (!limit || limit === 0) return null;
+                  
+                  return (
+                    <div key={event.id} className="mb-3 pb-3 border-b border-border last:border-0 last:mb-0 last:pb-0">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="font-semibold text-base">{event.name}</div>
+                        <div className="text-right">
+                          <div className="text-sm text-muted-foreground">
+                            {isAllSelected ? 'All' : limit} × ${event.individualCost}
+                          </div>
+                          <div className="font-bold text-primary">${individualCost}</div>
+                        </div>
+                      </div>
+                      {event.dateSelectionRequired === 1 && selections.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {selections.map(date => {
+                            const dateObj = availableDates[event.id]?.find(d => d.date === date);
+                            return (
+                              <span key={date} className="text-xs px-2 py-1 bg-white rounded-full border border-primary text-primary">
+                                {format(new Date(date + 'T12:00:00'), 'MMM d, yyyy')}
+                                {dateObj?.title && ` - ${dateObj.title}`}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Grand Total */}
+            <div className="card" style={{ background: 'var(--primary)', color: 'white', padding: '1.5rem', textAlign: 'center' }}>
+              <div className="text-sm uppercase tracking-wider opacity-90 mb-1">Total Amount</div>
+              <div className="text-4xl font-black">${calculateGrandTotal()}</div>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex justify-between mt-4">
+              <button
+                type="button"
+                onClick={() => setStep(3)}
                 className="btn-secondary"
               >
                 Back

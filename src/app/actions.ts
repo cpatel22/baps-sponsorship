@@ -107,8 +107,286 @@ export async function registerSponsorship(formData: any, selectedDates: { [event
         }
     }
 
+    // Send confirmation email
+    try {
+        await sendRegistrationConfirmationEmail(registrationId, formData);
+    } catch (error) {
+        console.error('Failed to send confirmation email:', error);
+        // Don't fail the registration if email fails
+    }
+
     revalidatePath('/admin/lookup');
     return { success: true, registrationId };
+}
+
+async function sendRegistrationConfirmationEmail(registrationId: string, formData: any) {
+    // Get email settings
+    const emailSettings = db.prepare('SELECT * FROM email_settings WHERE id = 1').get() as any;
+    if (!emailSettings) {
+        console.log('Email settings not configured, skipping confirmation email');
+        return;
+    }
+
+    // Get events data
+    const events = db.prepare('SELECT * FROM events ORDER BY sortOrder ASC').all() as any[];
+    
+    // Get registration dates with event details
+    const regDates = db.prepare(`
+        SELECT 
+            e.id as event_id,
+            e.name as event_name,
+            e.individualCost,
+            e.allCost,
+            rd.date,
+            ed.title as date_title
+        FROM registration_dates rd
+        JOIN events e ON rd.event_id = e.id
+        LEFT JOIN event_dates ed ON rd.event_id = ed.event_id AND rd.date = ed.date
+        WHERE rd.registration_id = ?
+        ORDER BY e.sortOrder ASC, rd.date ASC
+    `).all(registrationId) as any[];
+
+    // Group dates by event
+    const eventGroups: { [eventId: string]: any[] } = {};
+    regDates.forEach((rd: any) => {
+        if (!eventGroups[rd.event_id]) {
+            eventGroups[rd.event_id] = [];
+        }
+        eventGroups[rd.event_id].push(rd);
+    });
+
+    // Separate plan selections and individual selections based on formData
+    const planSelections: { [eventId: string]: any[] } = {};
+    const individualSelections: { [eventId: string]: any[] } = {};
+    
+    // Parse the sponsorship data from formData if available
+    const step2Data = formData.step2Selections || {};
+    const step3Data = formData.step3Limits || {};
+    
+    // Categorize selections
+    for (const eventId in eventGroups) {
+        const eventDates = eventGroups[eventId];
+        const step2Dates = step2Data[eventId] || [];
+        
+        planSelections[eventId] = eventDates.filter((ed: any) => step2Dates.includes(ed.date));
+        individualSelections[eventId] = eventDates.filter((ed: any) => !step2Dates.includes(ed.date));
+    }
+
+    // Calculate grand total
+    let grandTotal = 0;
+    
+    // Add plan price
+    const planPrices: { [key: string]: number } = {
+        'silver': 1751, 'gold': 2501, 'platinum': 3501,
+        'all_sabha': 7501, 'all_samaiya': 5001, 'all_sabha_samaiya': 11001
+    };
+    if (formData.sponsorshipType && planPrices[formData.sponsorshipType]) {
+        grandTotal += planPrices[formData.sponsorshipType];
+    }
+
+    // Calculate individual event costs
+    const individualCosts: { [eventId: string]: number } = {};
+    for (const event of events) {
+        const eventId = event.id;
+        const limit = step3Data[eventId];
+        
+        if (limit && limit !== 0) {
+            const isAll = limit === 'ALL';
+            const cost = isAll ? (event.allCost || 0) : (limit as number) * (event.individualCost || 0);
+            individualCosts[eventId] = cost;
+            grandTotal += cost;
+        }
+    }
+
+    // Build email HTML
+    let emailBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h1 style="color: #2563eb; margin-bottom: 10px; text-align: center; font-size: 28px;">Registration Confirmation</h1>
+                <p style="font-size: 16px; color: #333; margin-bottom: 25px; text-align: center;">
+                    Thank you for your sponsorship registration!
+                </p>
+                
+                <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                    <h3 style="color: #1e293b; margin: 0 0 12px 0; font-size: 18px; font-weight: bold;">Contact Information</h3>
+                    <div style="font-size: 14.4px; line-height: 1.6;">
+                        <p style="margin: 4px 0;"><strong>Name:</strong> ${formData.firstName} & ${formData.spouseFirstName} ${formData.lastName}</p>
+                        <p style="margin: 4px 0;"><strong>Address:</strong> ${formData.address}</p>
+                        <p style="margin: 4px 0;"><strong>Phone:</strong> ${formData.phone}</p>
+                        <p style="margin: 4px 0;"><strong>Email:</strong> ${formData.email}</p>
+                    </div>
+                </div>
+    `;
+
+    // Add sponsorship plan if selected
+    if (formData.sponsorshipType && planPrices[formData.sponsorshipType]) {
+        const planNames: { [key: string]: string } = {
+            'silver': 'Annual Silver Sponsorship (1 Samaiya, 1 Mahila Samaiya, 4 Weekly Satsang Sabha)',
+            'gold': 'Annual Gold Sponsorship (2 Samaiya, 2 Mahila Samaiya, 6 Weekly Satsang Sabha)',
+            'platinum': 'Annual Platinum Sponsorship (3 Samaiya, 3 Mahila Samaiya, 8 Weekly Satsang Sabha)',
+            'all_sabha': 'Annual Grand Sponsorships - All Weekly Satsang Sabha',
+            'all_samaiya': 'Annual Grand Sponsorships - All Samaiya',
+            'all_sabha_samaiya': 'Annual Grand Sponsorships - All Weekly Satsang Sabha & Samaiya'
+        };
+        
+        emailBody += `
+            <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <h3 style="color: #1e293b; margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">Sponsorship Plan</h3>
+                <p style="margin: 0; font-size: 16px;">${planNames[formData.sponsorshipType]}</p>
+                <div style="border-top: 1px solid #cbd5e1; margin-top: 8px; padding-top: 8px; text-align: right;">
+                    <span style="font-size: 18px; font-weight: bold; color: #2563eb;">$${planPrices[formData.sponsorshipType]}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Add plan event selections
+    if (Object.keys(planSelections).some(eid => planSelections[eid].length > 0)) {
+        emailBody += `
+            <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <h3 style="color: #1e293b; margin: 0 0 12px 0; font-size: 18px; font-weight: bold;">Plan Event Selections</h3>
+        `;
+
+        for (const eventId in planSelections) {
+            if (planSelections[eventId].length === 0) continue;
+            const eventDates = planSelections[eventId];
+            const eventName = eventDates[0].event_name;
+            
+            emailBody += `
+                <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #cbd5e1;">
+                    <p style="margin: 0 0 8px 0; font-weight: 600; font-size: 16px;">${eventName}</p>
+                    <div style="margin-top: 8px;">
+            `;
+
+            eventDates.forEach((ed: any) => {
+                const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+                emailBody += `
+                    <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
+                        ${dateStr}${ed.date_title ? ` - ${ed.date_title}` : ''}
+                    </span>
+                `;
+            });
+
+            emailBody += `
+                    </div>
+                    <div style="text-align: right; margin-top: 8px;">
+                        <span style="font-size: 14px; font-weight: 600;">${eventDates.length} date${eventDates.length > 1 ? 's' : ''}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        emailBody += `</div>`;
+    }
+
+    // Add individual event selections
+    const hasIndividualSelections = Object.keys(step3Data).some(eid => step3Data[eid] && step3Data[eid] !== 0);
+    
+    if (hasIndividualSelections) {
+        emailBody += `
+            <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <h3 style="color: #1e293b; margin: 0 0 12px 0; font-size: 18px; font-weight: bold;">Individual Event Selections</h3>
+        `;
+
+        for (const event of events) {
+            const eventId = event.id;
+            const limit = step3Data[eventId];
+            if (!limit || limit === 0) continue;
+            
+            const isAll = limit === 'ALL';
+            const eventDates = individualSelections[eventId] || [];
+            const cost = individualCosts[eventId];
+            
+            emailBody += `
+                <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #cbd5e1;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <div style="flex: 1;">
+                            <p style="margin: 0; font-weight: 600; font-size: 16px;">${event.name}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 14px; color: #64748b; margin-bottom: 4px;">
+                                ${isAll ? 'All' : limit} × $${event.individualCost}
+                            </div>
+                            <div style="font-weight: bold; color: #2563eb; font-size: 16px;">$${cost}</div>
+                        </div>
+                    </div>
+            `;
+
+            if (eventDates.length > 0) {
+                emailBody += `<div style="margin-top: 8px;">`;
+                eventDates.forEach((ed: any) => {
+                    const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                    });
+                    emailBody += `
+                        <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
+                            ${dateStr}${ed.date_title ? ` - ${ed.date_title}` : ''}
+                        </span>
+                    `;
+                });
+                emailBody += `</div>`;
+            }
+
+            emailBody += `</div>`;
+        }
+
+        emailBody += `</div>`;
+    }
+
+    // Grand Total
+    emailBody += `
+        <div style="background-color: #2563eb; color: white; padding: 24px; border-radius: 8px; text-align: center; margin-bottom: 16px;">
+            <div style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.9; margin-bottom: 4px;">Total Amount</div>
+            <div style="font-size: 36px; font-weight: 900;">$${grandTotal}</div>
+        </div>
+
+        <div style="background-color: #f1f5f9; color: #1e293b; padding: 20px; border-radius: 8px; text-align: center; border: 2px solid #cbd5e1;">
+            <p style="margin: 0; font-size: 14px; color: #64748b;">Registration ID</p>
+            <p style="margin: 8px 0 0 0; font-size: 24px; font-weight: bold; letter-spacing: 0.05em;">${registrationId}</p>
+        </div>
+
+        <p style="margin-top: 30px; font-size: 14px; color: #64748b; text-align: center;">
+            Thank you for your support!
+        </p>
+            </div>
+        </div>
+    `;
+
+    try {
+        const nodemailer = await import('nodemailer');
+        
+        const port = emailSettings.connection_security === 'SSL' ? emailSettings.smtp_port_ssl : emailSettings.smtp_port_tls;
+        const secure = emailSettings.connection_security === 'SSL';
+        
+        const transporter = nodemailer.default.createTransport({
+            host: emailSettings.smtp_server,
+            port: port,
+            secure: secure,
+            auth: {
+                user: emailSettings.smtp_username,
+                pass: emailSettings.smtp_password,
+            },
+        });
+
+        await transporter.sendMail({
+            from: emailSettings.email_from,
+            to: formData.email,
+            replyTo: emailSettings.reply_to_email || emailSettings.email_from,
+            subject: 'Sponsorship Registration Confirmation',
+            html: emailBody
+        });
+
+        console.log('Confirmation email sent successfully to:', formData.email);
+    } catch (error: any) {
+        console.error('Failed to send confirmation email:', error.message);
+        throw error;
+    }
 }
 
 export async function getRegistrations() {
