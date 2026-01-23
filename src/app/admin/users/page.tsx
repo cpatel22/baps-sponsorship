@@ -143,7 +143,7 @@ export default function UserManagement() {
 
                             <div className="hidden">
                                 <label className="label">Recovery Email</label>
-                                <input name="recovery_email" type="email" defaultValue={editingUser?.recovery_email} required />
+                                <input name="recovery_email" type="email" defaultValue={editingUser?.recovery_email} />
                             </div>
 
                             <div className="flex justify-end gap-3 mt-4">

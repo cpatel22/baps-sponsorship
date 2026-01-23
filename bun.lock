@@ -14,7 +14,7 @@
         "@tiptap/react": "^3.16.0",
         "@tiptap/starter-kit": "^3.16.0",
         "@types/nodemailer": "^7.0.5",
-        "better-sqlite3": "^12.6.0",
+        "better-sqlite3": "^12.6.2",
         "clsx": "^2.1.1",
         "datatables.net-dt": "^2.3.6",
         "datatables.net-responsive-dt": "^3.0.7",
