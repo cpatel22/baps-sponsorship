@@ -223,7 +223,7 @@ export default function Home() {
           </div>
           <h1 className="page-title">Registration Successful!</h1>
           <p className="page-description mb-6">Thank you for your sponsorship. We have received your application.</p>
-          <button onClick={() => window.location.reload()} className="btn-primary">Register Another</button>
+          <button onClick={() => window.location.reload()} className="btn-primary hidden">Register Another</button>
         </div>
       </div>
     );
@@ -597,7 +597,44 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => setStep(4)}
+                onClick={() => {
+                  // Validate that all events with limits have the required number of dates selected
+                  const errors: string[] = [];
+                  
+                  events.forEach(event => {
+                    const limit = step3Limits[event.id];
+                    
+                    // Skip if no limit or limit is 0 or event doesn't require date selection
+                    if (!limit || limit === 0 || event.dateSelectionRequired !== 1) return;
+                    
+                    const selectedCount = (step3Selections[event.id] || []).length;
+                    
+                    if (limit === 'ALL') {
+                      // For ALL, calculate how many dates should be selected (total - step2 dates)
+                      const allDates = (availableDates[event.id] || []).map(d => d.date);
+                      const step2Dates = step2Selections[event.id] || [];
+                      const requiredCount = allDates.length - step2Dates.length;
+                      
+                      if (selectedCount < requiredCount) {
+                        errors.push(`${event.name}: You must select all ${requiredCount} available date${requiredCount > 1 ? 's' : ''} (currently selected: ${selectedCount})`);
+                      }
+                    } else {
+                      // For specific number, check if enough dates are selected
+                      const requiredCount = limit as number;
+                      
+                      if (selectedCount < requiredCount) {
+                        errors.push(`${event.name}: You must select ${requiredCount} date${requiredCount > 1 ? 's' : ''} (currently selected: ${selectedCount})`);
+                      }
+                    }
+                  });
+                  
+                  if (errors.length > 0) {
+                    alert('Please complete your date selections:\n\n' + errors.join('\n'));
+                    return;
+                  }
+                  
+                  setStep(4);
+                }}
                 className="btn-primary"
               >
                 Review Summary
