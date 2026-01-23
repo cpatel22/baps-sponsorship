@@ -499,3 +499,15 @@ table.dataTable tbody tr:hover {
 table.dataTable.no-footer {
   border-bottom: 2px solid #e2e8f0;
 }
+
+/* Modal Animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

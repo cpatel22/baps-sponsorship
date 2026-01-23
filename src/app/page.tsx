@@ -39,6 +39,15 @@ export default function Home() {
   const [step3Selections, setStep3Selections] = useState<{ [eventId: string]: string[] }>({});
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState('');
+
+  const showAlert = (message: string) => {
+    setModalMessage(message);
+    setShowModal(true);
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -104,7 +113,7 @@ export default function Home() {
         });
 
         if (errors.length > 0) {
-          alert(`Please complete your selections for the chosen plan:\n\n${errors.join('\n')}`);
+          showAlert(`Please complete your selections for the chosen plan:\n\n${errors.join('\n')}`);
           return;
         }
       }
@@ -128,7 +137,7 @@ export default function Home() {
       }
 
       if (limit === 0 && !formData.sponsorshipType) {
-        alert("Please select a sponsorship plan first, or click 'Next Step' for individual selection.");
+        showAlert("Please select a sponsorship plan first, or click 'Next Step' for individual selection.");
         return;
       }
     } else {
@@ -140,7 +149,7 @@ export default function Home() {
       }
 
       if (limit === 0) {
-        alert(`Please set a limit for ${events.find(e => e.id === eventId)?.name} first.`);
+        showAlert(`Please set a limit for ${events.find(e => e.id === eventId)?.name} first.`);
         return;
       }
     }
@@ -161,7 +170,7 @@ export default function Home() {
         }));
       } else {
         const type = step === 2 ? "plan limit" : "additional limit";
-        alert(`You have reached the ${type} of ${limit} days for ${events.find(e => e.id === eventId)?.name}.`);
+        showAlert(`You have reached the ${type} of ${limit} days for ${events.find(e => e.id === eventId)?.name}.`);
       }
     }
   };
@@ -629,7 +638,7 @@ export default function Home() {
                   });
                   
                   if (errors.length > 0) {
-                    alert('Please complete your date selections:\n\n' + errors.join('\n'));
+                    showAlert('Please complete your date selections:\n\n' + errors.join('\n'));
                     return;
                   }
                   
@@ -774,6 +783,73 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Modal Popup */}
+      {showModal && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem'
+          }}
+        >
+          <div 
+            className="modal-content" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '12px',
+              maxWidth: '500px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              animation: 'slideIn 0.2s ease-out'
+            }}
+          >
+            <div style={{ 
+              background: 'var(--primary)', 
+              color: 'white', 
+              width: '56px', 
+              height: '56px', 
+              borderRadius: '50%', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              margin: '0 auto 1.5rem',
+              fontSize: '24px',
+              fontWeight: 'bold'
+            }}>
+              !
+            </div>
+            <p style={{ 
+              fontSize: '1.125rem', 
+              textAlign: 'center', 
+              marginBottom: '1.5rem',
+              color: 'var(--text)',
+              lineHeight: '1.6'
+            }}>
+              {modalMessage}
+            </p>
+            <button
+              onClick={() => setShowModal(false)}
+              className="btn-primary"
+              style={{ width: '100%' }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
