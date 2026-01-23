@@ -35,7 +35,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     registration_id TEXT NOT NULL,
     event_id TEXT NOT NULL,
-    date TEXT NOT NULL,
+    date TEXT,
+    quantity INTEGER DEFAULT 1,
     FOREIGN KEY (registration_id) REFERENCES registrations(id) ON DELETE CASCADE,
     FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
   );
@@ -98,6 +99,44 @@ try {
   `);
 } catch (e) {
   // Column already exists, ignore error
+}
+
+// Migrate registration_dates table to make date nullable and add quantity
+try {
+  // Check if the old schema exists (date is NOT NULL)
+  const tableInfo = db.prepare("PRAGMA table_info(registration_dates)").all() as any[];
+  const dateColumn = tableInfo.find((col: any) => col.name === 'date');
+  const quantityColumn = tableInfo.find((col: any) => col.name === 'quantity');
+  
+  // If date is NOT NULL or quantity doesn't exist, recreate the table
+  if ((dateColumn && dateColumn.notnull === 1) || !quantityColumn) {
+    db.exec(`
+      -- Create new table with correct schema
+      CREATE TABLE IF NOT EXISTS registration_dates_new (
+        id TEXT PRIMARY KEY,
+        registration_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        date TEXT,
+        quantity INTEGER DEFAULT 1,
+        FOREIGN KEY (registration_id) REFERENCES registrations(id) ON DELETE CASCADE,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+      );
+      
+      -- Copy existing data
+      INSERT INTO registration_dates_new (id, registration_id, event_id, date, quantity)
+      SELECT id, registration_id, event_id, date, 
+             COALESCE((SELECT quantity FROM registration_dates rd2 WHERE rd2.id = registration_dates.id), 1)
+      FROM registration_dates;
+      
+      -- Drop old table
+      DROP TABLE registration_dates;
+      
+      -- Rename new table
+      ALTER TABLE registration_dates_new RENAME TO registration_dates;
+    `);
+  }
+} catch (e) {
+  console.log('Registration_dates migration skipped or already applied:', e);
 }
 
 // Seed initial events and super admin if they don't exist

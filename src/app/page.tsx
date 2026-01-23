@@ -204,6 +204,16 @@ export default function Home() {
       const s2 = step2Selections[event.id] || [];
       const s3 = step3Selections[event.id] || [];
       const combined = [...new Set([...s2, ...s3])];
+      
+      // For events without date selection in step3, add a placeholder to indicate selection
+      const step3Limit = step3Limits[event.id];
+      if (event.dateSelectionRequired === 0 && step3Limit && step3Limit !== 0) {
+        // Use empty array with at least one entry to indicate this event is selected
+        if (combined.length === 0) {
+          combined.push('no-date-required');
+        }
+      }
+      
       if (combined.length > 0) {
         mergedSelections[event.id] = combined;
       }
@@ -748,6 +758,11 @@ export default function Home() {
                               </span>
                             );
                           })}
+                        </div>
+                      )}
+                      {event.dateSelectionRequired === 0 && (
+                        <div className="text-sm text-muted-foreground mt-2">
+                          {isAllSelected ? 'All' : limit}
                         </div>
                       )}
                     </div>

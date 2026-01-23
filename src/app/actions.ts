@@ -92,18 +92,40 @@ export async function registerSponsorship(formData: any, selectedDates: { [event
     );
 
     const insertDate = db.prepare(`
-    INSERT INTO registration_dates (id, registration_id, event_id, date)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO registration_dates (id, registration_id, event_id, date, quantity)
+    VALUES (?, ?, ?, ?, ?)
   `);
 
+    // Get all events to check dateSelectionRequired
+    const allEvents = db.prepare('SELECT * FROM events').all() as any[];
+    
     for (const eventId in selectedDates) {
-        for (const date of selectedDates[eventId]) {
+        const event = allEvents.find(e => e.id === eventId);
+        const dates = selectedDates[eventId];
+        
+        // If event doesn't require date selection, store as quantity only
+        if (event && event.dateSelectionRequired === 0) {
+            const step3Limit = formData.step3Limits?.[eventId];
+            const quantity = step3Limit === 'ALL' ? -1 : (typeof step3Limit === 'number' ? step3Limit : dates.length);
+            
             insertDate.run(
                 Math.random().toString(36).substring(2, 11),
                 registrationId,
                 eventId,
-                date
+                null, // No specific date
+                quantity
             );
+        } else {
+            // Store each date individually for events with date selection
+            for (const date of dates) {
+                insertDate.run(
+                    Math.random().toString(36).substring(2, 11),
+                    registrationId,
+                    eventId,
+                    date,
+                    1
+                );
+            }
         }
     }
 
@@ -137,7 +159,9 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
             e.name as event_name,
             e.individualCost,
             e.allCost,
+            e.dateSelectionRequired,
             rd.date,
+            rd.quantity,
             ed.title as date_title
         FROM registration_dates rd
         JOIN events e ON rd.event_id = e.id
@@ -259,16 +283,27 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
             `;
 
             eventDates.forEach((ed: any) => {
-                const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric' 
-                });
-                emailBody += `
-                    <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
-                        ${dateStr}${ed.date_title ? ` - ${ed.date_title}` : ''}
-                    </span>
-                `;
+                // For events without dates, show quantity
+                if (ed.dateSelectionRequired === 0 || !ed.date) {
+                    const quantityText = ed.quantity === -1 ? 'All' : ed.quantity || 1;
+                    emailBody += `
+                        <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
+                            ${quantityText}
+                        </span>
+                    `;
+                } else {
+                    // For events with dates, show date
+                    const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                    });
+                    emailBody += `
+                        <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
+                            ${dateStr}${ed.date_title ? ` - ${ed.date_title}` : ''}
+                        </span>
+                    `;
+                }
             });
 
             emailBody += `
@@ -319,16 +354,27 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
             if (eventDates.length > 0) {
                 emailBody += `<div style="margin-top: 8px;">`;
                 eventDates.forEach((ed: any) => {
-                    const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                    });
-                    emailBody += `
-                        <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
-                            ${dateStr}${ed.date_title ? ` - ${ed.date_title}` : ''}
-                        </span>
-                    `;
+                    // For events without dates, show quantity
+                    if (ed.dateSelectionRequired === 0 || !ed.date) {
+                        const quantityText = ed.quantity === -1 ? 'All' : ed.quantity || 1;
+                        emailBody += `
+                            <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
+                               ${quantityText}
+                            </span>
+                        `;
+                    } else {
+                        // For events with dates, show date
+                        const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                        });
+                        emailBody += `
+                            <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
+                                ${dateStr}${ed.date_title ? ` - ${ed.date_title}` : ''}
+                            </span>
+                        `;
+                    }
                 });
                 emailBody += `</div>`;
             }
@@ -402,7 +448,9 @@ export async function getRegistrationEventsWithDetails(registrationId: string) {
         SELECT 
             e.id as event_id,
             e.name as event_name,
+            e.dateSelectionRequired,
             rd.date,
+            rd.quantity,
             ed.title as date_title
         FROM registration_dates rd
         JOIN events e ON rd.event_id = e.id

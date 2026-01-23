@@ -411,6 +411,25 @@ export default function Lookup() {
                                     </thead>
                                     <tbody>
                                         {viewedEvents.map((event, index) => {
+                                            // For events without date selection, display quantity
+                                            if (event.dateSelectionRequired === 0 || !event.date) {
+                                                const quantityText = event.quantity === -1 ? 'All' : event.quantity || 1;
+                                                return (
+                                                    <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
+                                                        <td className="py-3 px-4 text-[#1e293b]">
+                                                            -
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#334155] font-medium">
+                                                            {event.event_name}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#64748b]">
+                                                            {quantityText}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            }
+                                            
+                                            // For events with date selection, display dates
                                             // Parse date as local date to avoid timezone issues
                                             const [year, month, day] = event.date.split('-').map(Number);
                                             const localDate = new Date(year, month - 1, day);
