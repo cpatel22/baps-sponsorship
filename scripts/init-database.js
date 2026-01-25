@@ -229,8 +229,7 @@ async function initializeDatabase() {
     console.log('  Database:', PGDATABASE || 'NOT SET');
     console.log('  Port:', PGPORT || 'NOT SET');
     console.log('  SSL Mode:', PGSSLMODE || 'NOT SET');
-    console.log('  Password:', PGPASSWORD ? '✓ SET' : '❌ NOT SET'); console.error('Error code:', error.code);
-    }
+    console.log('  Password:', PGPASSWORD ? '✓ SET' : '❌ NOT SET');
     process.exit(1);
   } finally {
     if (pool) {
