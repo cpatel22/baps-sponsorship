@@ -100,7 +100,7 @@ export default function EventMaster() {
                 </div>
 
                 <div>
-                    {selectedEvent && selectedEvent.dateSelectionRequired === 1 && (
+                    {selectedEvent && selectedEvent.dateSelectionRequired && (
                         <div className="card">
                             <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><CalendarIcon size={20} /> Manage Dates</h2>
                             <Calendar
@@ -112,7 +112,7 @@ export default function EventMaster() {
                 </div>
 
                 <div>
-                    {selectedEvent && selectedEvent.dateSelectionRequired === 1 && (
+                    {selectedEvent && selectedEvent.dateSelectionRequired && (
                         <div className="card">
                             <h3 className="text-lg font-bold mb-4">Active Dates for {selectedEvent.name}</h3>
                             {eventDates.length === 0 ? (

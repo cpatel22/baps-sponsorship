@@ -1,6 +1,6 @@
 'use server'
 
-import db from '@/lib/db';
+import db from '@/lib/db-azure';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -9,7 +9,7 @@ export async function login(formData: FormData) {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ? AND password = ?').get(email, password) as any;
+    const user = await db.authenticateUser(email, password);
 
     if (user) {
         const cookieStore = await cookies();
@@ -37,11 +37,11 @@ export async function getCurrentUser() {
     const sessionId = cookieStore.get('session')?.value;
     if (!sessionId) return null;
 
-    return db.prepare('SELECT id, email, role, recovery_email FROM users WHERE id = ?').get(sessionId) as any;
+    return await db.getUserById(sessionId);
 }
 
 export async function getEvents() {
-    return db.prepare('SELECT * FROM events ORDER BY sortOrder ASC').all() as {
+    return await db.getEvents() as {
         id: string,
         name: string,
         individualCost: number,
@@ -53,51 +53,41 @@ export async function getEvents() {
 }
 
 export async function getEventDates(eventId: string) {
-    return db.prepare('SELECT * FROM event_dates WHERE event_id = ? ORDER BY date ASC').all(eventId) as { id: string, event_id: string, date: string, title?: string }[];
+    return await db.getEventDates(eventId) as { id: string, event_id: string, date: string, title?: string }[];
 }
 
 export async function addEventDate(eventId: string, date: string) {
     const id = Math.random().toString(36).substring(2, 11);
-    db.prepare('INSERT INTO event_dates (id, event_id, date) VALUES (?, ?, ?)').run(id, eventId, date);
+    await db.createEventDate(id, eventId, date);
     revalidatePath('/admin/eventMaster');
 }
 
 export async function deleteEventDate(id: string) {
-    db.prepare('DELETE FROM event_dates WHERE id = ?').run(id);
+    await db.deleteEventDate(id);
     revalidatePath('/admin/eventMaster');
 }
 
 export async function updateEventDateTitle(id: string, title: string) {
-    db.prepare('UPDATE event_dates SET title = ? WHERE id = ?').run(title, id);
+    await db.updateEventDateTitle(id, title);
     revalidatePath('/admin/eventMaster');
 }
 
 export async function registerSponsorship(formData: any, selectedDates: { [eventId: string]: string[] }) {
     const registrationId = Math.random().toString(36).substring(2, 11);
 
-    const insertRegistration = db.prepare(`
-    INSERT INTO registrations (id, first_name, spouse_first_name, last_name, address, phone, email, sponsorship_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-    insertRegistration.run(
-        registrationId,
-        formData.firstName,
-        formData.spouseFirstName,
-        formData.lastName,
-        formData.address,
-        formData.phone,
-        formData.email,
-        formData.sponsorshipType
-    );
-
-    const insertDate = db.prepare(`
-    INSERT INTO registration_dates (id, registration_id, event_id, date, quantity)
-    VALUES (?, ?, ?, ?, ?)
-  `);
+    await db.createRegistration({
+        id: registrationId,
+        first_name: formData.firstName,
+        spouse_first_name: formData.spouseFirstName,
+        last_name: formData.lastName,
+        address: formData.address,
+        phone: formData.phone,
+        email: formData.email,
+        sponsorship_type: formData.sponsorshipType
+    });
 
     // Get all events to check dateSelectionRequired
-    const allEvents = db.prepare('SELECT * FROM events').all() as any[];
+    const allEvents = await db.getEvents();
     
     for (const eventId in selectedDates) {
         const event = allEvents.find(e => e.id === eventId);
@@ -108,23 +98,23 @@ export async function registerSponsorship(formData: any, selectedDates: { [event
             const step3Limit = formData.step3Limits?.[eventId];
             const quantity = step3Limit === 'ALL' ? -1 : (typeof step3Limit === 'number' ? step3Limit : dates.length);
             
-            insertDate.run(
-                Math.random().toString(36).substring(2, 11),
-                registrationId,
-                eventId,
-                null, // No specific date
-                quantity
-            );
+            await db.createRegistrationDate({
+                id: Math.random().toString(36).substring(2, 11),
+                registration_id: registrationId,
+                event_id: eventId,
+                date: null, // No specific date
+                quantity: quantity
+            });
         } else {
             // Store each date individually for events with date selection
             for (const date of dates) {
-                insertDate.run(
-                    Math.random().toString(36).substring(2, 11),
-                    registrationId,
-                    eventId,
-                    date,
-                    1
-                );
+                await db.createRegistrationDate({
+                    id: Math.random().toString(36).substring(2, 11),
+                    registration_id: registrationId,
+                    event_id: eventId,
+                    date: date,
+                    quantity: 1
+                });
             }
         }
     }
@@ -143,32 +133,17 @@ export async function registerSponsorship(formData: any, selectedDates: { [event
 
 async function sendRegistrationConfirmationEmail(registrationId: string, formData: any) {
     // Get email settings
-    const emailSettings = db.prepare('SELECT * FROM email_settings WHERE id = 1').get() as any;
+    const emailSettings = await db.getEmailSettings();
     if (!emailSettings) {
         console.log('Email settings not configured, skipping confirmation email');
         return;
     }
 
     // Get events data
-    const events = db.prepare('SELECT * FROM events ORDER BY sortOrder ASC').all() as any[];
+    const events = await db.getEvents();
     
     // Get registration dates with event details
-    const regDates = db.prepare(`
-        SELECT 
-            e.id as event_id,
-            e.name as event_name,
-            e.individualCost,
-            e.allCost,
-            e.dateSelectionRequired,
-            rd.date,
-            rd.quantity,
-            ed.title as date_title
-        FROM registration_dates rd
-        JOIN events e ON rd.event_id = e.id
-        LEFT JOIN event_dates ed ON rd.event_id = ed.event_id AND rd.date = ed.date
-        WHERE rd.registration_id = ?
-        ORDER BY e.sortOrder ASC, rd.date ASC
-    `).all(registrationId) as any[];
+    const regDates = await db.getRegistrationEventsWithDetails(registrationId);
 
     // Group dates by event
     const eventGroups: { [eventId: string]: any[] } = {};
@@ -436,107 +411,75 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
 }
 
 export async function getRegistrations() {
-    return db.prepare('SELECT * FROM registrations ORDER BY created_at DESC').all() as any[];
+    return await db.getRegistrations();
 }
 
 export async function getRegistrationDates(registrationId: string) {
-    return db.prepare('SELECT * FROM registration_dates WHERE registration_id = ?').all(registrationId) as any[];
+    return await db.getRegistrationDates(registrationId);
 }
 
 export async function getRegistrationEventsWithDetails(registrationId: string) {
-    return db.prepare(`
-        SELECT 
-            e.id as event_id,
-            e.name as event_name,
-            e.dateSelectionRequired,
-            rd.date,
-            rd.quantity,
-            ed.title as date_title
-        FROM registration_dates rd
-        JOIN events e ON rd.event_id = e.id
-        LEFT JOIN event_dates ed ON rd.event_id = ed.event_id AND rd.date = ed.date
-        WHERE rd.registration_id = ?
-        ORDER BY e.sortOrder ASC, rd.date ASC
-    `).all(registrationId) as any[];
+    return await db.getRegistrationEventsWithDetails(registrationId);
 }
 
 export async function searchRegistrations(query: string) {
-    const q = `%${query}%`;
-    return db.prepare(`
-    SELECT * FROM registrations 
-    WHERE first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR phone LIKE ?
-    ORDER BY created_at DESC
-  `).all(q, q, q, q) as any[];
+    return await db.searchRegistrations(query);
 }
 
 export async function getRegistrationsByDate(date: string) {
-    return db.prepare(`
-    SELECT r.* FROM registrations r
-    JOIN registration_dates rd ON r.id = rd.registration_id
-    WHERE rd.date = ?
-    GROUP BY r.id
-    ORDER BY r.created_at DESC
-  `).all(date) as any[];
+    return await db.getRegistrationsByDate(date);
 }
 
 export async function getRegistrationsByYear(year: string) {
-    return db.prepare(`
-    SELECT DISTINCT r.* FROM registrations r
-    JOIN registration_dates rd ON r.id = rd.registration_id
-    WHERE rd.date LIKE ?
-    ORDER BY r.created_at DESC
-  `).all(`%${year}%`) as any[];
+    return await db.getRegistrationsByYear(year);
 }
 
 export async function getAllUsers() {
-    return db.prepare('SELECT id, email, role, recovery_email, created_at FROM users').all() as any[];
+    return await db.getUsers();
 }
 
 export async function updateUser(id: string, data: any) {
-    if (data.password) {
-        db.prepare('UPDATE users SET email = ?, password = ?, role = ?, recovery_email = ? WHERE id = ?')
-            .run(data.email, data.password, data.role, data.recovery_email, id);
-    } else {
-        db.prepare('UPDATE users SET email = ?, role = ?, recovery_email = ? WHERE id = ?')
-            .run(data.email, data.role, data.recovery_email, id);
-    }
+    await db.updateUser(id, {
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        recovery_email: data.recovery_email
+    });
     revalidatePath('/admin/users');
 }
 
 export async function addUser(data: any) {
     const id = Math.random().toString(36).substring(2, 11);
-    db.prepare('INSERT INTO users (id, email, password, role, recovery_email) VALUES (?, ?, ?, ?, ?)')
-        .run(id, data.email, data.password, data.role, data.recovery_email);
+    await db.createUser({
+        id: id,
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        recovery_email: data.recovery_email
+    });
     revalidatePath('/admin/users');
 }
 
 export async function deleteUser(id: string) {
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    await db.deleteUser(id);
     revalidatePath('/admin/users');
 }
 
 export async function sendEmailReminder(userIds: string[], templateId: string) {
     // Get the email template
-    const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(templateId) as any;
+    const template = await db.getEmailTemplateById(templateId);
     if (!template) {
         return { success: false, error: 'Email template not found' };
     }
 
     // Get email settings
-    const emailSettings = db.prepare('SELECT * FROM email_settings WHERE id = 1').get() as any;
+    const emailSettings = await db.getEmailSettings();
     if (!emailSettings) {
         return { success: false, error: 'Email settings not configured. Please configure email settings first.' };
     }
 
     // Get registrations for the selected users
-    const placeholders = userIds.map(() => '?').join(',');
-    const query = `
-        SELECT DISTINCT r.*
-        FROM registrations r
-        WHERE r.id IN (${placeholders})
-    `;
-
-    const registrants = db.prepare(query).all(...userIds) as any[];
+    const registrants = await db.getRegistrationsByIds(userIds);
 
     if (registrants.length === 0) {
         return { success: false, error: 'No users found' };
@@ -622,68 +565,50 @@ export async function sendEmailReminder(userIds: string[], templateId: string) {
 }
 
 export async function getEmailTemplates() {
-    return db.prepare('SELECT * FROM email_templates ORDER BY created_at DESC').all() as {
-        id: string,
-        name: string,
-        to_field: string,
-        cc_field: string,
-        bcc_field: string,
-        subject: string,
-        body: string,
-        created_at: string,
-        updated_at: string
-    }[];
+    return await db.getEmailTemplates();
 }
 
 export async function getEmailTemplate(id: string) {
-    return db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id) as {
-        id: string,
-        name: string,
-        to_field: string,
-        cc_field: string,
-        bcc_field: string,
-        subject: string,
-        body: string,
-        created_at: string,
-        updated_at: string
-    } | undefined;
+    return await db.getEmailTemplateById(id);
 }
 
 export async function saveEmailTemplate(id: string | null, name: string, toField: string, ccField: string, bccField: string, subject: string, body: string) {
     if (id) {
         // Update existing template
-        db.prepare('UPDATE email_templates SET name = ?, to_field = ?, cc_field = ?, bcc_field = ?, subject = ?, body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-            .run(name, toField, ccField, bccField, subject, body, id);
+        await db.updateEmailTemplate(id, {
+            name: name,
+            to_field: toField,
+            cc_field: ccField,
+            bcc_field: bccField,
+            subject: subject,
+            body: body
+        });
         revalidatePath('/admin/settings');
         return { success: true, id };
     } else {
         // Create new template
         const newId = Math.random().toString(36).substring(2, 11);
-        db.prepare('INSERT INTO email_templates (id, name, to_field, cc_field, bcc_field, subject, body) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            .run(newId, name, toField, ccField, bccField, subject, body);
+        await db.createEmailTemplate({
+            id: newId,
+            name: name,
+            to_field: toField,
+            cc_field: ccField,
+            bcc_field: bccField,
+            subject: subject,
+            body: body
+        });
         revalidatePath('/admin/settings');
         return { success: true, id: newId };
     }
 }
 
 export async function deleteEmailTemplate(id: string) {
-    db.prepare('DELETE FROM email_templates WHERE id = ?').run(id);
+    await db.deleteEmailTemplate(id);
     revalidatePath('/admin/settings');
 }
 
 export async function getEmailSettings() {
-    return db.prepare('SELECT * FROM email_settings WHERE id = 1').get() as {
-        id: number,
-        email_from: string,
-        smtp_server: string,
-        smtp_port_tls: number,
-        smtp_port_ssl: number,
-        smtp_username: string,
-        smtp_password: string,
-        connection_security: string,
-        reply_to_email: string,
-        updated_at: string
-    } | undefined;
+    return await db.getEmailSettings();
 }
 
 export async function saveEmailSettings(settings: {
@@ -696,42 +621,16 @@ export async function saveEmailSettings(settings: {
     connectionSecurity: string,
     replyToEmail: string
 }) {
-    const existing = db.prepare('SELECT * FROM email_settings WHERE id = 1').get();
-    
-    if (existing) {
-        db.prepare(`
-            UPDATE email_settings 
-            SET email_from = ?, smtp_server = ?, smtp_port_tls = ?, smtp_port_ssl = ?,
-                smtp_username = ?, smtp_password = ?, connection_security = ?, reply_to_email = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = 1
-        `).run(
-            settings.emailFrom,
-            settings.smtpServer,
-            settings.smtpPortTLS,
-            settings.smtpPortSSL,
-            settings.smtpUsername,
-            settings.smtpPassword,
-            settings.connectionSecurity,
-            settings.replyToEmail
-        );
-    } else {
-        db.prepare(`
-            INSERT INTO email_settings (
-                id, email_from, smtp_server, smtp_port_tls, smtp_port_ssl,
-                smtp_username, smtp_password, connection_security, reply_to_email
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-            settings.emailFrom,
-            settings.smtpServer,
-            settings.smtpPortTLS,
-            settings.smtpPortSSL,
-            settings.smtpUsername,
-            settings.smtpPassword,
-            settings.connectionSecurity,
-            settings.replyToEmail
-        );
-    }
+    await db.updateEmailSettings({
+        email_from: settings.emailFrom,
+        smtp_server: settings.smtpServer,
+        smtp_port_tls: settings.smtpPortTLS,
+        smtp_port_ssl: settings.smtpPortSSL,
+        smtp_username: settings.smtpUsername,
+        smtp_password: settings.smtpPassword,
+        connection_security: settings.connectionSecurity,
+        reply_to_email: settings.replyToEmail
+    });
     
     revalidatePath('/admin/settings');
     return { success: true };
