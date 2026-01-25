@@ -11,7 +11,8 @@
     "db:import": "node import-to-postgres.js",
     "db:migrate": "npm run db:export && npm run db:import",
     "db:init": "node scripts/init-database.js",
-    "vercel-build": "node scripts/init-database.js && next build"
+    "db:migrate-schema": "node scripts/migrate-events-table.js",
+    "vercel-build": "node scripts/migrate-events-table.js && node scripts/init-database.js && next build"
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.975.0",

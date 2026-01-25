@@ -68,6 +68,10 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        individual_cost NUMERIC(10, 2) DEFAULT 0,
+        all_cost NUMERIC(10, 2) DEFAULT 0,
+        individual_upto INTEGER DEFAULT 0,
+        date_selection_required INTEGER DEFAULT 1,
         sort_order INTEGER DEFAULT 0
       );
 
@@ -151,10 +155,10 @@ async function initializeDatabase() {
     const eventCheck = await pool.query('SELECT COUNT(*) as count FROM events');
     if (parseInt(eventCheck.rows[0].count) === 0) {
       await pool.query(`
-        INSERT INTO events (id, name, sort_order) VALUES 
-        ('event_a', 'Samaiyas', 0),
-        ('event_b', 'Mahila Samaiyas', 1),
-        ('event_c', 'Weekly Satsang Sabha', 2);
+        INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES 
+        ('event_a', 'Samaiyas', 200, 2000, 10, 1, 0),
+        ('event_b', 'Mahila Samaiyas', 200, 2000, 10, 1, 1),
+        ('event_c', 'Weekly Satsang Sabha', 100, 1000, 20, 1, 2);
       `);
       console.log('  ✓ Events inserted (3 events)');
     } else {

@@ -132,6 +132,10 @@ async function initializeSchema(pool: Pool) {
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    individual_cost NUMERIC(10, 2) DEFAULT 0,
+    all_cost NUMERIC(10, 2) DEFAULT 0,
+    individual_upto INTEGER DEFAULT 0,
+    date_selection_required INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0
   );
 
@@ -207,9 +211,9 @@ async function seed(pool: Pool) {
   const eventCount = parseInt(eventCountResult.rows[0].count);
   
   if (eventCount === 0) {
-    await pool.query('INSERT INTO events (id, name, sort_order) VALUES ($1, $2, $3)', ['event_a', 'Samaiyas', 0]);
-    await pool.query('INSERT INTO events (id, name, sort_order) VALUES ($1, $2, $3)', ['event_b', 'Mahila Samaiyas', 1]);
-    await pool.query('INSERT INTO events (id, name, sort_order) VALUES ($1, $2, $3)', ['event_c', 'Weekly Satsang Sabha', 2]);
+    await pool.query('INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', ['event_a', 'Samaiyas', 200, 2000, 10, 1, 0]);
+    await pool.query('INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', ['event_b', 'Mahila Samaiyas', 200, 2000, 10, 1, 1]);
+    await pool.query('INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', ['event_c', 'Weekly Satsang Sabha', 100, 1000, 20, 1, 2]);
   }
 
   const userCountResult = await pool.query('SELECT COUNT(*) as count FROM users');

@@ -41,7 +41,7 @@ export async function getCurrentUser() {
 }
 
 export async function getEvents() {
-    return await db.all('SELECT * FROM events ORDER BY sort_order ASC', []) as {
+    const rows = await db.all('SELECT * FROM events ORDER BY sort_order ASC', []) as {
         id: string,
         name: string,
         individual_cost: number,
@@ -50,6 +50,17 @@ export async function getEvents() {
         date_selection_required: number,
         sort_order: number
     }[];
+    
+    // Transform snake_case to camelCase for frontend
+    return rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        individualCost: row.individual_cost || 0,
+        allCost: row.all_cost || 0,
+        individualUpto: row.individual_upto || 0,
+        dateSelectionRequired: row.date_selection_required ?? 1,
+        sortOrder: row.sort_order || 0
+    }));
 }
 
 export async function getEventDates(eventId: string) {
