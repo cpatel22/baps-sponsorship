@@ -376,7 +376,13 @@ export default function Home() {
                                       pointerEvents: isSelectedFromStep3 ? 'none' : 'auto'
                                     }}
                                   >
-                                    {format(new Date(dateObj.date + 'T12:00:00'), 'MMM d, yyyy')}
+                                    {(() => {
+                                      try {
+                                        return format(new Date(dateObj.date + 'T12:00:00'), 'MMM d, yyyy');
+                                      } catch {
+                                        return dateObj.date;
+                                      }
+                                    })()}
                                     {dateObj.title && ` - ${dateObj.title}`}
                                   </button>
                                 );
@@ -578,7 +584,13 @@ export default function Home() {
                                     pointerEvents: isSelectedFromStep2 ? 'none' : 'auto'
                                   }}
                                 >
-                                  {format(new Date(dateObj.date + 'T12:00:00'), 'MMM d, yyyy')}
+                                  {(() => {
+                                    try {
+                                      return format(new Date(dateObj.date + 'T12:00:00'), 'MMM d, yyyy');
+                                    } catch {
+                                      return dateObj.date;
+                                    }
+                                  })()}
                                   {dateObj.title && ` - ${dateObj.title}`}
                                 </button>
                               );
@@ -708,7 +720,13 @@ export default function Home() {
                           const dateObj = availableDates[event.id]?.find(d => d.date === date);
                           return (
                             <span key={date} className="text-xs px-2 py-1 bg-white rounded-full border border-primary text-primary">
-                              {format(new Date(date + 'T12:00:00'), 'MMM d, yyyy')}
+                              {(() => {
+                                try {
+                                  return format(new Date(date + 'T12:00:00'), 'MMM d, yyyy');
+                                } catch {
+                                  return date;
+                                }
+                              })()}
                               {dateObj?.title && ` - ${dateObj.title}`}
                             </span>
                           );
@@ -753,7 +771,13 @@ export default function Home() {
                             const dateObj = availableDates[event.id]?.find(d => d.date === date);
                             return (
                               <span key={date} className="text-xs px-2 py-1 bg-white rounded-full border border-primary text-primary">
-                                {format(new Date(date + 'T12:00:00'), 'MMM d, yyyy')}
+                                {(() => {
+                                  try {
+                                    return format(new Date(date + 'T12:00:00'), 'MMM d, yyyy');
+                                  } catch {
+                                    return date;
+                                  }
+                                })()}
                                 {dateObj?.title && ` - ${dateObj.title}`}
                               </span>
                             );

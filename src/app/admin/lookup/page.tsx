@@ -544,7 +544,7 @@ export default function Lookup() {
                                     <tbody>
                                         {viewedEvents.map((event, index) => {
                                             // For events without date selection, display quantity
-                                            if (event.dateSelectionRequired === false || !event.date) {
+                                            if (event.dateSelectionRequired === false || !event.date || event.date.trim() === '') {
                                                 const quantityText = event.quantity === -1 ? 'All' : event.quantity || 1;
                                                 return (
                                                     <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
@@ -562,23 +562,52 @@ export default function Lookup() {
                                             }
                                             
                                             // For events with date selection, display dates
-                                            // Parse date as local date to avoid timezone issues
-                                            const [year, month, day] = event.date.split('-').map(Number);
-                                            const localDate = new Date(year, month - 1, day);
-                                            
-                                            return (
-                                            <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
-                                                <td className="py-3 px-4 text-[#1e293b]" data-order={localDate.getTime()}>
-                                                    {format(localDate, 'MM/dd/yyyy')}
-                                                </td>
-                                                <td className="py-3 px-4 text-[#334155] font-medium">
-                                                    {event.event_name}
-                                                </td>
-                                                <td className="py-3 px-4 text-[#64748b]">
-                                                    {event.date_title || ''}
-                                                </td>
-                                            </tr>
-                                            );
+                                            try {
+                                                // Parse date as local date to avoid timezone issues
+                                                const dateParts = event.date.split('-');
+                                                if (dateParts.length !== 3) {
+                                                    throw new Error('Invalid date format');
+                                                }
+                                                const [year, month, day] = dateParts.map(Number);
+                                                if (isNaN(year) || isNaN(month) || isNaN(day)) {
+                                                    throw new Error('Invalid date values');
+                                                }
+                                                const localDate = new Date(year, month - 1, day);
+                                                
+                                                // Check if date is valid
+                                                if (isNaN(localDate.getTime())) {
+                                                    throw new Error('Invalid date');
+                                                }
+                                                
+                                                return (
+                                                <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
+                                                    <td className="py-3 px-4 text-[#1e293b]" data-order={localDate.getTime()}>
+                                                        {format(localDate, 'MM/dd/yyyy')}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-[#334155] font-medium">
+                                                        {event.event_name}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-[#64748b]">
+                                                        {event.date_title || ''}
+                                                    </td>
+                                                </tr>
+                                                );
+                                            } catch (err) {
+                                                // If date parsing fails, show as quantity event
+                                                return (
+                                                    <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
+                                                        <td className="py-3 px-4 text-[#1e293b]">
+                                                            Invalid Date
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#334155] font-medium">
+                                                            {event.event_name}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#64748b]">
+                                                            {event.date_title || event.date}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            }
                                         })}
                                     </tbody>
                                 </table>
