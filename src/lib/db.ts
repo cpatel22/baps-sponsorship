@@ -1,149 +1,42 @@
-import { Pool, QueryResult } from 'pg';
-import { Signer } from '@aws-sdk/rds-signer';
+import Database from 'better-sqlite3';
+import path from 'path';
 
-// Support multiple environment variable formats (Vercel, Railway, custom)
-const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const DB_PATH = path.join(process.cwd(), 'sponsorship.db');
 
-// Support Vercel Postgres individual environment variables
-const PGHOST = process.env.PGHOST || process.env.bapsorlando_PGHOST;
-const PGUSER = process.env.PGUSER || process.env.bapsorlando_PGUSER;
-const PGDATABASE = process.env.PGDATABASE || process.env.bapsorlando_PGDATABASE;
-const PGPASSWORD = process.env.PGPASSWORD || process.env.bapsorlando_PGPASSWORD;
-const PGPORT = process.env.PGPORT || process.env.bapsorlando_PGPORT;
-const PGSSLMODE = process.env.PGSSLMODE || process.env.bapsorlando_PGSSLMODE;
-
-// AWS IAM authentication (for Vercel Postgres on Aurora)
-const AWS_REGION = process.env.AWS_REGION || process.env.bapsorlando_AWS_REGION;
-const USE_IAM_AUTH = process.env.bapsorlando_AWS_ROLE_ARN && !PGPASSWORD;
-
-let pool: Pool | null = null;
+let db: Database.Database | null = null;
 let initialized = false;
 
-// Generate IAM auth token for RDS
-async function getIAMAuthToken(): Promise<string> {
-  if (!USE_IAM_AUTH || !PGHOST || !PGUSER || !AWS_REGION) {
-    throw new Error('IAM authentication requires PGHOST, PGUSER, and AWS_REGION');
-  }
+// Lazy initialization of the database
+function getDB(): Database.Database {
+  if (db && initialized) return db;
 
-  const signer = new Signer({
-    hostname: PGHOST,
-    port: PGPORT ? parseInt(PGPORT) : 5432,
-    username: PGUSER,
-    region: AWS_REGION,
-  });
-
-  return await signer.getAuthToken();
-}
-
-// Get PostgreSQL connection pool
-function getPool(): Pool {
-  if (pool) return pool;
+  db = new Database(DB_PATH);
   
-  // Build connection config - prefer individual vars (Vercel style) over connection string
-  const config = DATABASE_URL 
-    ? {
-        connectionString: DATABASE_URL,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
-      }
-    : {
-        host: PGHOST,
-        user: PGUSER,
-        password: PGPASSWORD, // Will be overridden by IAM token if USE_IAM_AUTH
-        database: PGDATABASE,
-        port: PGPORT ? parseInt(PGPORT) : 5432,
-        ssl: PGSSLMODE === 'require' ? { rejectUnauthorized: false } : undefined,
-      };
-  
-  pool = new Pool({
-    ...config,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-  });
-
-  // Override password getter for IAM authentication
-  if (USE_IAM_AUTH) {
-    const originalConnect = pool.connect.bind(pool);
-    pool.connect = async (...args: any[]) => {
-      // Generate fresh IAM token for each connection
-      const token = await getIAMAuthToken();
-      if (pool) {
-        (pool as any).options.password = token;
-      }
-      return originalConnect(...args);
-    };
-  }
-  
-  pool.on('error', (err) => {
-    console.error('Unexpected error on idle client', err);
-  });
-  
-  return pool;
-}
-
-// Initialize database on first connection
-async function initializeDB() {
-  if (initialized) return;
-  
-  const pool = getPool();
-  await initializeSchema(pool);
-  await seed(pool);
-  initialized = true;
-}
-
-// Database wrapper with auto-initialization
-class DatabaseWrapper {
-  private async ensureInitialized() {
-    await initializeDB();
+  if (!initialized) {
+    initializeSchema();
+    migrateRegistrationDates();
+    migrateEmailTemplates();
+    seed();
+    initialized = true;
   }
 
-  async query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
-    await this.ensureInitialized();
-    const pool = getPool();
-    return pool.query<T>(text, params);
-  }
-
-  async get<T = any>(text: string, params?: any[]): Promise<T | undefined> {
-    await this.ensureInitialized();
-    const result = await this.query<T>(text, params);
-    return result.rows[0];
-  }
-
-  async all<T = any>(text: string, params?: any[]): Promise<T[]> {
-    await this.ensureInitialized();
-    const result = await this.query<T>(text, params);
-    return result.rows;
-  }
-
-  async run(text: string, params?: any[]): Promise<void> {
-    await this.ensureInitialized();
-    await this.query(text, params);
-  }
-
-  async getPool(): Promise<Pool> {
-    await this.ensureInitialized();
-    return getPool();
-  }
+  return db;
 }
 
 // Initialize database schema
-async function initializeSchema(pool: Pool) {
-  await pool.query(`
+function initializeSchema() {
+  if (!db) return;
+
+  db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    individual_cost NUMERIC(10, 2) DEFAULT 0,
-    all_cost NUMERIC(10, 2) DEFAULT 0,
-    individual_upto INTEGER DEFAULT 0,
-    date_selection_required INTEGER DEFAULT 1,
-    sort_order INTEGER DEFAULT 0
+    name TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS event_dates (
     id TEXT PRIMARY KEY,
     event_id TEXT NOT NULL,
     date TEXT NOT NULL,
-    title TEXT,
     FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
   );
 
@@ -156,7 +49,7 @@ async function initializeSchema(pool: Pool) {
     phone TEXT NOT NULL,
     email TEXT NOT NULL,
     sponsorship_type TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS registration_dates (
@@ -175,7 +68,7 @@ async function initializeSchema(pool: Pool) {
     password TEXT NOT NULL,
     role TEXT NOT NULL,
     recovery_email TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS email_templates (
@@ -186,8 +79,8 @@ async function initializeSchema(pool: Pool) {
     bcc_field TEXT,
     subject TEXT NOT NULL,
     body TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS email_settings (
@@ -200,34 +93,107 @@ async function initializeSchema(pool: Pool) {
     smtp_password TEXT NOT NULL,
     connection_security TEXT DEFAULT 'TLS',
     reply_to_email TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 `);
 }
 
-// Seed initial events and super admin if they don't exist
-async function seed(pool: Pool) {
-  const eventCountResult = await pool.query('SELECT COUNT(*) as count FROM events');
-  const eventCount = parseInt(eventCountResult.rows[0].count);
-  
-  if (eventCount === 0) {
-    await pool.query('INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', ['event_a', 'Samaiyas', 200, 2000, 10, 1, 0]);
-    await pool.query('INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', ['event_b', 'Mahila Samaiyas', 200, 2000, 10, 1, 1]);
-    await pool.query('INSERT INTO events (id, name, individual_cost, all_cost, individual_upto, date_selection_required, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', ['event_c', 'Weekly Satsang Sabha', 100, 1000, 20, 1, 2]);
+// Add columns to existing email_templates table if they don't exist
+function migrateEmailTemplates() {
+  if (!db) return;
+
+  try {
+    db.exec(`
+      ALTER TABLE email_templates ADD COLUMN to_field TEXT DEFAULT '{{email}}';
+    `);
+  } catch (e) {
+    // Column already exists, ignore error
   }
 
-  const userCountResult = await pool.query('SELECT COUNT(*) as count FROM users');
-  const userCount = parseInt(userCountResult.rows[0].count);
+  try {
+    db.exec(`
+      ALTER TABLE email_templates ADD COLUMN cc_field TEXT;
+    `);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+
+  try {
+    db.exec(`
+      ALTER TABLE email_templates ADD COLUMN bcc_field TEXT;
+    `);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+}
+
+// Migrate registration_dates table to make date nullable and add quantity
+function migrateRegistrationDates() {
+  if (!db) return;
+
+  try {
+  // Check if the old schema exists (date is NOT NULL)
+  const tableInfo = db.prepare("PRAGMA table_info(registration_dates)").all() as any[];
+  const dateColumn = tableInfo.find((col: any) => col.name === 'date');
+  const quantityColumn = tableInfo.find((col: any) => col.name === 'quantity');
   
-  if (userCount === 0) {
+  // If date is NOT NULL or quantity doesn't exist, recreate the table
+  if ((dateColumn && dateColumn.notnull === 1) || !quantityColumn) {
+    db.exec(`
+      -- Create new table with correct schema
+      CREATE TABLE IF NOT EXISTS registration_dates_new (
+        id TEXT PRIMARY KEY,
+        registration_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        date TEXT,
+        quantity INTEGER DEFAULT 1,
+        FOREIGN KEY (registration_id) REFERENCES registrations(id) ON DELETE CASCADE,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+      );
+      
+      -- Copy existing data
+      INSERT INTO registration_dates_new (id, registration_id, event_id, date, quantity)
+      SELECT id, registration_id, event_id, date, 
+             COALESCE((SELECT quantity FROM registration_dates rd2 WHERE rd2.id = registration_dates.id), 1)
+      FROM registration_dates;
+      
+      -- Drop old table
+      DROP TABLE registration_dates;
+      
+      -- Rename new table
+      ALTER TABLE registration_dates_new RENAME TO registration_dates;
+    `);
+  }
+  } catch (e) {
+    console.log('Registration_dates migration skipped or already applied:', e);
+  }
+}
+
+// Seed initial events and super admin if they don't exist
+function seed() {
+  if (!db) return;
+
+  const eventCount = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number };
+  if (eventCount.count === 0) {
+    const insert = db.prepare('INSERT INTO events (id, name) VALUES (?, ?)');
+    insert.run('event_a', 'Samaiyas');
+    insert.run('event_b', 'Mahila Samaiyas');
+    insert.run('event_c', 'Weekly Satsang Sabha');
+  }
+
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+  if (userCount.count === 0) {
+    const insert = db.prepare('INSERT INTO users (id, email, password, role, recovery_email) VALUES (?, ?, ?, ?, ?)');
     // Initial user: admin@example.com / admin123
-    const userId = Math.random().toString(36).substring(2, 11);
-    await pool.query(
-      'INSERT INTO users (id, email, password, role, recovery_email) VALUES ($1, $2, $3, $4, $5)',
-      [userId, 'admin@example.com', 'admin123', 'super_admin', 'recovery@example.com']
+    insert.run(
+      Math.random().toString(36).substring(2, 11),
+      'admin@example.com',
+      'admin123', // In a real app, use bcrypt here
+      'super_admin',
+      'recovery@example.com'
     );
   }
 }
 
-// Export the database wrapper
-export default new DatabaseWrapper();
+// Export the lazy getter function as default
+export default getDB();
