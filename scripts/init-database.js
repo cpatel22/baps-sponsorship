@@ -36,7 +36,16 @@ async function initializeDatabase() {
     let password = PGPASSWORD;
     if (USE_IAM_AUTH) {
       console.log('🔐 Using AWS IAM authentication...');
-      password = await getIAMAuthToken();
+      try {
+        password = await getIAMAuthToken();
+      } catch (iamError) {
+        console.warn('⚠️  IAM authentication failed, trying password-based auth...');
+        console.warn('   Error:', iamError.message);
+        if (!PGPASSWORD) {
+          throw new Error('IAM auth failed and no PGPASSWORD provided');
+        }
+        password = PGPASSWORD;
+      }
     }
 
     // Create connection pool
