@@ -544,7 +544,7 @@ export default function Lookup() {
                                     <tbody>
                                         {viewedEvents.map((event, index) => {
                                             // For events without date selection, display quantity
-                                            if (event.dateSelectionRequired === 0 || !event.date) {
+                                            if (event.dateSelectionRequired === false || !event.date) {
                                                 const quantityText = event.quantity === -1 ? 'All' : event.quantity || 1;
                                                 return (
                                                     <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">

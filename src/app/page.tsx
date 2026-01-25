@@ -207,7 +207,7 @@ export default function Home() {
       
       // For events without date selection in step3, add a placeholder to indicate selection
       const step3Limit = step3Limits[event.id];
-      if (event.dateSelectionRequired === 0 && step3Limit && step3Limit !== 0) {
+      if (event.dateSelectionRequired === false && step3Limit && step3Limit !== 0) {
         // Use empty array with at least one entry to indicate this event is selected
         if (combined.length === 0) {
           combined.push('no-date-required');
@@ -438,7 +438,7 @@ export default function Home() {
                 const isAllSelected = individualLimit === 'ALL';
 
                 const maxAvailableDates = eventAvailableDates.length - step2EventSelections.length;
-                const limitSource = event.dateSelectionRequired === 1 ? maxAvailableDates : (event.individualUpto || 0);
+                const limitSource = event.dateSelectionRequired === true ? maxAvailableDates : (event.individualUpto || 0);
 
                 const effectiveLimit = isAllSelected ? maxAvailableDates : (individualLimit as number);
                 const selectedCount = step3Selections[event.id]?.length || 0;
@@ -491,7 +491,7 @@ export default function Home() {
 
                               if (event.allCost !== null && (newVal * event.individualCost) >= event.allCost) {
                                 setStep3Limits(prev => ({ ...prev, [event.id]: 'ALL' }));
-                                if (event.dateSelectionRequired === 1) {
+                                if (event.dateSelectionRequired === true) {
                                   const allDates = (availableDates[event.id] || []).map(d => d.date);
                                   const s2 = step2Selections[event.id] || [];
                                   setStep3Selections(prev => ({
@@ -519,7 +519,7 @@ export default function Home() {
                                   setStep3Selections(prev => ({ ...prev, [event.id]: [] }));
                                 } else {
                                   setStep3Limits(prev => ({ ...prev, [event.id]: 'ALL' }));
-                                  if (event.dateSelectionRequired === 1) {
+                                  if (event.dateSelectionRequired === true) {
                                     const allDates = (availableDates[event.id] || []).map(d => d.date);
                                     const s2 = step2Selections[event.id] || [];
                                     setStep3Selections(prev => ({
@@ -541,7 +541,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {event.dateSelectionRequired === 1 && (effectiveLimit > 0 || (step2Selections[event.id]?.length || 0) > 0) && (
+                    {event.dateSelectionRequired === true && (effectiveLimit > 0 || (step2Selections[event.id]?.length || 0) > 0) && (
                       <fieldset className="card-dates">
                         <legend className="px-2 flex items-center gap-2 -ml-1">
                           <span className="text-xs font-bold uppercase tracking-widest text-[#64748b] hidden">Available Dates</span>
@@ -624,7 +624,7 @@ export default function Home() {
                     const limit = step3Limits[event.id];
                     
                     // Skip if no limit or limit is 0 or event doesn't require date selection
-                    if (!limit || limit === 0 || event.dateSelectionRequired !== 1) return;
+                    if (!limit || limit === 0 || event.dateSelectionRequired !== true) return;
                     
                     const selectedCount = (step3Selections[event.id] || []).length;
                     
@@ -747,7 +747,7 @@ export default function Home() {
                           <div className="font-bold text-primary">${individualCost}</div>
                         </div>
                       </div>
-                      {event.dateSelectionRequired === 1 && selections.length > 0 && (
+                      {event.dateSelectionRequired === true && selections.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-2">
                           {selections.map(date => {
                             const dateObj = availableDates[event.id]?.find(d => d.date === date);
@@ -760,7 +760,7 @@ export default function Home() {
                           })}
                         </div>
                       )}
-                      {event.dateSelectionRequired === 0 && (
+                      {event.dateSelectionRequired === false && (
                         <div className="text-sm text-muted-foreground mt-2">
                           {isAllSelected ? 'All' : limit}
                         </div>

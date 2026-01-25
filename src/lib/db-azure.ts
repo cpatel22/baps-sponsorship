@@ -46,7 +46,7 @@ export interface Event {
   individualCost: number;
   allCost: number;
   individualUpto: number;
-  dateSelectionRequired: number;
+  dateSelectionRequired: boolean;
   sortOrder: number;
 }
 

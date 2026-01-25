@@ -47,7 +47,7 @@ export async function getEvents() {
         individualCost: number,
         allCost: number,
         individualUpto: number,
-        dateSelectionRequired: number,
+        dateSelectionRequired: boolean,
         sortOrder: number
     }[];
 }
@@ -94,7 +94,7 @@ export async function registerSponsorship(formData: any, selectedDates: { [event
         const dates = selectedDates[eventId];
         
         // If event doesn't require date selection, store as quantity only
-        if (event && event.dateSelectionRequired === 0) {
+        if (event && event.dateSelectionRequired === false) {
             const step3Limit = formData.step3Limits?.[eventId];
             const quantity = step3Limit === 'ALL' ? -1 : (typeof step3Limit === 'number' ? step3Limit : dates.length);
             
@@ -259,7 +259,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
 
             eventDates.forEach((ed: any) => {
                 // For events without dates, show quantity
-                if (ed.dateSelectionRequired === 0 || !ed.date) {
+                if (ed.dateSelectionRequired === false || !ed.date) {
                     const quantityText = ed.quantity === -1 ? 'All' : ed.quantity || 1;
                     emailBody += `
                         <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
@@ -330,7 +330,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
                 emailBody += `<div style="margin-top: 8px;">`;
                 eventDates.forEach((ed: any) => {
                     // For events without dates, show quantity
-                    if (ed.dateSelectionRequired === 0 || !ed.date) {
+                    if (ed.dateSelectionRequired === false || !ed.date) {
                         const quantityText = ed.quantity === -1 ? 'All' : ed.quantity || 1;
                         emailBody += `
                             <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
