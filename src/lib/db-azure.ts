@@ -41,7 +41,7 @@ async function getPool(): Promise<sql.ConnectionPool> {
 
   try {
     isConnecting = true;
-    
+
     // If pool exists but not connected, close it first
     if (pool) {
       try {
@@ -60,7 +60,7 @@ async function getPool(): Promise<sql.ConnectionPool> {
     isConnecting = false;
     console.error('Database connection failed:', err);
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    
+
     // Provide more specific error messages for common issues
     if (errorMessage.includes('timeout')) {
       throw new Error('Database connection timeout - database may be idle or sleeping');
@@ -128,6 +128,7 @@ export interface EmailTemplate {
   body: string;
   created_at: Date;
   updated_at: Date;
+  is_editable: boolean;
 }
 
 export interface EmailSettings {
@@ -357,7 +358,7 @@ class Database {
   async getEmailTemplates(): Promise<EmailTemplate[]> {
     const pool = await getPool();
     const result = await pool.request()
-      .query<EmailTemplate>('SELECT * FROM dbo.email_templates ORDER BY created_at DESC');
+      .query<EmailTemplate>('SELECT * FROM dbo.email_templates where is_editable<> 0 ORDER BY created_at DESC');
     return result.recordset;
   }
 

@@ -95,7 +95,7 @@ export default function UserManagement() {
                                 <button onClick={() => setEditingUser(user)} className="btn-secondary p-2">
                                     <Settings size={16} />
                                 </button>
-                                {user.id !== currAdmin?.id && (
+                                {user.id !== currAdmin?.id && user.role.toLowerCase() !== 'super_admin' && (
                                     <button onClick={() => handleDelete(user.id)} className="btn-secondary p-2 text-destructive">
                                         <Trash2 size={16} />
                                     </button>
