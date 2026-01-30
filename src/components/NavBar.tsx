@@ -11,7 +11,7 @@ interface NavBarProps {
 
 export default function NavBar({ user }: NavBarProps) {
     const pathname = usePathname();
-    
+
     // Hide menu if on root path
     if (pathname === '/') {
         return null;
@@ -29,10 +29,8 @@ export default function NavBar({ user }: NavBarProps) {
 
                         {user ? (
                             <>
-                                <Link href="/admin/eventMaster" className="nav-link">Event Master</Link>
                                 <Link href="/admin/details" className="nav-link">Details</Link>
                                 <Link href="/admin/lookup" className="nav-link">Lookup</Link>
-                                <Link href="/admin/users" className="nav-link">Users</Link>
                                 <Link href="/admin/settings" className="nav-link">Settings</Link>
 
                                 <div className="flex items-center gap-4 ml-4 pl-4" style={{ borderLeft: '1px solid var(--border)' }}>

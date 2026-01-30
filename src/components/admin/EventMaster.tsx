@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { getEvents, getEventDates, addEventDate, deleteEventDate, getCurrentUser, updateEventDateTitle } from '@/app/actions';
-import { useRouter } from 'next/navigation';
+import { getEvents, getEventDates, addEventDate, deleteEventDate, updateEventDateTitle } from '@/app/actions';
 import Calendar from '@/components/Calendar';
 import { format } from 'date-fns';
 import { Trash2, Calendar as CalendarIcon, Edit2, Save, X } from 'lucide-react';
@@ -14,17 +13,6 @@ export default function EventMaster() {
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingTitle, setEditingTitle] = useState('');
-    const router = useRouter();
-
-    useEffect(() => {
-        async function checkAuth() {
-            const user = await getCurrentUser();
-            if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-                router.push('/');
-            }
-        }
-        checkAuth();
-    }, []);
 
     useEffect(() => {
         async function loadEvents() {
