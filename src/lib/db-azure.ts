@@ -7,11 +7,12 @@ const config: sql.config = {
   user: process.env.AZURE_SQL_USER || '',
   password: process.env.AZURE_SQL_PASSWORD || '',
   port: parseInt(process.env.AZURE_SQL_PORT || '1433'),
+  connectionTimeout: 60000, // Wait up to 60s for connection (important for serverless wake-up)
   options: {
     encrypt: true, // Required for Azure
     trustServerCertificate: false,
     enableArithAbort: true,
-    requestTimeout: 30000,
+    requestTimeout: 60000, // Increase request timeout to 60s
   },
   pool: {
     max: 10,
@@ -22,54 +23,56 @@ const config: sql.config = {
 
 // Connection pool
 let pool: sql.ConnectionPool | null = null;
-let isConnecting = false;
+let connectionPromise: Promise<sql.ConnectionPool> | null = null;
 
 // Get or create connection pool
 async function getPool(): Promise<sql.ConnectionPool> {
+  // If pool is ready, return it immediately
   if (pool && pool.connected) {
     return pool;
   }
 
-  // Prevent multiple simultaneous connection attempts
-  if (isConnecting) {
-    // Wait for ongoing connection attempt
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    if (pool && pool.connected) {
-      return pool;
-    }
+  // If a connection attempt is already in progress, wait for it
+  if (connectionPromise) {
+    return connectionPromise;
   }
 
-  try {
-    isConnecting = true;
-
-    // If pool exists but not connected, close it first
-    if (pool) {
-      try {
-        await pool.close();
-      } catch (closeErr) {
-        console.warn('Error closing existing pool:', closeErr);
+  // Start a new connection attempt
+  connectionPromise = (async () => {
+    try {
+      // If pool exists but not connected, close it first
+      if (pool) {
+        try {
+          await pool.close();
+        } catch (closeErr) {
+          console.warn('Error closing existing pool:', closeErr);
+        }
+        pool = null;
       }
-      pool = null;
-    }
 
-    pool = await new sql.ConnectionPool(config).connect();
-    console.log('Connected to Azure SQL Database');
-    isConnecting = false;
-    return pool;
-  } catch (err) {
-    isConnecting = false;
-    console.error('Database connection failed:', err);
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const newPool = await new sql.ConnectionPool(config).connect();
+      pool = newPool;
+      console.log('Connected to Azure SQL Database');
+      return newPool;
+    } catch (err) {
+      console.error('Database connection failed:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
-    // Provide more specific error messages for common issues
-    if (errorMessage.includes('timeout')) {
-      throw new Error('Database connection timeout - database may be idle or sleeping');
-    } else if (errorMessage.includes('ECONNREFUSED')) {
-      throw new Error('Database connection refused - database may be starting up');
-    } else {
-      throw err;
+      // Provide more specific error messages for common issues
+      if (errorMessage.includes('timeout')) {
+        throw new Error('Database connection timeout - database may be idle or sleeping');
+      } else if (errorMessage.includes('ECONNREFUSED')) {
+        throw new Error('Database connection refused - database may be starting up');
+      } else {
+        throw err;
+      }
+    } finally {
+      // Clear the promise so future calls can try again if needed
+      connectionPromise = null;
     }
-  }
+  })();
+
+  return connectionPromise;
 }
 
 // Database operations interface
