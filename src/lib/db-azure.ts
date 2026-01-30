@@ -22,6 +22,7 @@ const config: sql.config = {
 
 // Connection pool
 let pool: sql.ConnectionPool | null = null;
+let isConnecting = false;
 
 // Get or create connection pool
 async function getPool(): Promise<sql.ConnectionPool> {
@@ -29,13 +30,45 @@ async function getPool(): Promise<sql.ConnectionPool> {
     return pool;
   }
 
+  // Prevent multiple simultaneous connection attempts
+  if (isConnecting) {
+    // Wait for ongoing connection attempt
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (pool && pool.connected) {
+      return pool;
+    }
+  }
+
   try {
+    isConnecting = true;
+    
+    // If pool exists but not connected, close it first
+    if (pool) {
+      try {
+        await pool.close();
+      } catch (closeErr) {
+        console.warn('Error closing existing pool:', closeErr);
+      }
+      pool = null;
+    }
+
     pool = await new sql.ConnectionPool(config).connect();
     console.log('Connected to Azure SQL Database');
+    isConnecting = false;
     return pool;
   } catch (err) {
+    isConnecting = false;
     console.error('Database connection failed:', err);
-    throw err;
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    
+    // Provide more specific error messages for common issues
+    if (errorMessage.includes('timeout')) {
+      throw new Error('Database connection timeout - database may be idle or sleeping');
+    } else if (errorMessage.includes('ECONNREFUSED')) {
+      throw new Error('Database connection refused - database may be starting up');
+    } else {
+      throw err;
+    }
   }
 }
 
