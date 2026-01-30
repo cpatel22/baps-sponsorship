@@ -60,24 +60,40 @@ export default function Lookup() {
     useEffect(() => {
         // Load DataTables scripts and styles only once
         if (typeof window !== 'undefined' && !window.jQuery) {
-            const jqueryScript = document.createElement('script');
-            jqueryScript.id = 'jquery-script';
-            jqueryScript.src = 'https://code.jquery.com/jquery-3.7.1.min.js';
-            jqueryScript.async = true;
-            jqueryScript.onload = () => {
-                const dtScript = document.createElement('script');
-                dtScript.id = 'datatables-script';
-                dtScript.src = 'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js';
-                dtScript.async = true;
-                document.body.appendChild(dtScript);
+            const loadScript = (src: string): Promise<void> => {
+                return new Promise((resolve, reject) => {
+                    if (document.querySelector(`script[src="${src}"]`)) {
+                        resolve();
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.async = true;
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+                    document.body.appendChild(script);
+                });
             };
-            document.body.appendChild(jqueryScript);
 
-            const dtStyles = document.createElement('link');
-            dtStyles.id = 'datatables-styles';
-            dtStyles.rel = 'stylesheet';
-            dtStyles.href = 'https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css';
-            document.head.appendChild(dtStyles);
+            const loadStyles = (href: string) => {
+                if (document.querySelector(`link[href="${href}"]`)) return;
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = href;
+                document.head.appendChild(link);
+            };
+
+            // Load styles
+            loadStyles('https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css');
+            loadStyles('https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css');
+
+            // Load scripts sequentially
+            loadScript('https://code.jquery.com/jquery-3.7.1.min.js')
+                .then(() => loadScript('https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js'))
+                .then(() => loadScript('https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js'))
+                .then(() => loadScript('https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js'))
+                .then(() => loadScript('https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js'))
+                .catch(err => console.error('Error loading DataTable scripts:', err));
         }
     }, []);
 
@@ -173,7 +189,11 @@ export default function Lookup() {
                 pageLength: 10,
                 responsive: true,
                 destroy: true, // Allow re-initialization
-                order: [[1, 'asc']],
+                order: [[1, 'asc']], // Sort by First Name initially
+                dom: 'Bfrtip',
+                buttons: [
+                    'csv', 'print'
+                ],
                 columnDefs: [
                     { orderable: false, targets: [0, 7] }
                 ],

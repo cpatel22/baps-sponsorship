@@ -20,7 +20,7 @@ export default function Lookup() {
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-    
+
     // Email reminder states
     const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -69,24 +69,40 @@ export default function Lookup() {
     useEffect(() => {
         // Load DataTables scripts and styles only once
         if (typeof window !== 'undefined' && !window.jQuery) {
-            const jqueryScript = document.createElement('script');
-            jqueryScript.id = 'jquery-script';
-            jqueryScript.src = 'https://code.jquery.com/jquery-3.7.1.min.js';
-            jqueryScript.async = true;
-            jqueryScript.onload = () => {
-                const dtScript = document.createElement('script');
-                dtScript.id = 'datatables-script';
-                dtScript.src = 'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js';
-                dtScript.async = true;
-                document.body.appendChild(dtScript);
+            const loadScript = (src: string): Promise<void> => {
+                return new Promise((resolve, reject) => {
+                    if (document.querySelector(`script[src="${src}"]`)) {
+                        resolve();
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.async = true;
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+                    document.body.appendChild(script);
+                });
             };
-            document.body.appendChild(jqueryScript);
 
-            const dtStyles = document.createElement('link');
-            dtStyles.id = 'datatables-styles';
-            dtStyles.rel = 'stylesheet';
-            dtStyles.href = 'https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css';
-            document.head.appendChild(dtStyles);
+            const loadStyles = (href: string) => {
+                if (document.querySelector(`link[href="${href}"]`)) return;
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = href;
+                document.head.appendChild(link);
+            };
+
+            // Load styles
+            loadStyles('https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css');
+            loadStyles('https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css');
+
+            // Load scripts sequentially
+            loadScript('https://code.jquery.com/jquery-3.7.1.min.js')
+                .then(() => loadScript('https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js'))
+                .then(() => loadScript('https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js'))
+                .then(() => loadScript('https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js'))
+                .then(() => loadScript('https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js'))
+                .catch(err => console.error('Error loading DataTable scripts:', err));
         }
     }, []);
 
@@ -183,6 +199,10 @@ export default function Lookup() {
                 responsive: true,
                 destroy: true, // Allow re-initialization
                 order: [[1, 'asc']],
+                dom: 'Bfrtip',
+                buttons: [
+                    'csv', 'print'
+                ],
                 columnDefs: [
                     { orderable: false, targets: [0, 7] }
                 ],
@@ -271,7 +291,7 @@ export default function Lookup() {
         try {
             const userIds = Array.from(selectedUsers);
             const result = await sendEmailReminder(userIds, selectedTemplateId);
-            
+
             if (result.success) {
                 let message = `✅ Email sent successfully to ${result.count} user(s)!`;
                 if (result.warning) {
@@ -301,16 +321,16 @@ export default function Lookup() {
                 {/* Date Filter */}
                 <div className="flex justify-end px-4">
                     <div className="relative flex items-center gap-3">
-                       <label className="text-[#475569] font-semibold text-base hidden">Select Date:</label>
+                        <label className="text-[#475569] font-semibold text-base hidden">Select Date:</label>
                         <input
                             type="date"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
                             className="appearance-none bg-white border border-[#cbd5e1] hover:border-[#94a3b8] text-[#1e293b] py-2.5 pl-4 pr-4 rounded-xl leading-tight focus:outline-none focus:ring-2 focus:ring-[#3b82f6/20] focus:border-[#3b82f6] font-semibold shadow-sm transition-all cursor-pointer text-base"
-                        />                        
+                        />
                     </div>
                 </div>
-<hr className="mt-2"/>
+                <hr className="mt-2" />
                 {/* DataTable */}
                 <div
                     className="bg-white rounded-3xl shadow-xl border border-[#e2e8f0] overflow-hidden"
@@ -410,9 +430,9 @@ export default function Lookup() {
 
                         {/* Email Reminder Section */}
                         {!loading && registrations.length > 0 && selectedUsers.size > 0 && (
-                            <div style={{ 
-                                borderTop: '2px solid #e2e8f0', 
-                                paddingTop: '1.5rem', 
+                            <div style={{
+                                borderTop: '2px solid #e2e8f0',
+                                paddingTop: '1.5rem',
                                 marginTop: '1.5rem',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -560,7 +580,7 @@ export default function Lookup() {
                                                     </tr>
                                                 );
                                             }
-                                            
+
                                             // For events with date selection, display dates
                                             try {
                                                 // Parse date as local date to avoid timezone issues
@@ -573,24 +593,24 @@ export default function Lookup() {
                                                     throw new Error('Invalid date values');
                                                 }
                                                 const localDate = new Date(year, month - 1, day);
-                                                
+
                                                 // Check if date is valid
                                                 if (isNaN(localDate.getTime())) {
                                                     throw new Error('Invalid date');
                                                 }
-                                                
+
                                                 return (
-                                                <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
-                                                    <td className="py-3 px-4 text-[#1e293b]" data-order={localDate.getTime()}>
-                                                        {format(localDate, 'MM/dd/yyyy')}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-[#334155] font-medium">
-                                                        {event.event_name}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-[#64748b]">
-                                                        {event.date_title || ''}
-                                                    </td>
-                                                </tr>
+                                                    <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
+                                                        <td className="py-3 px-4 text-[#1e293b]" data-order={localDate.getTime()}>
+                                                            {format(localDate, 'MM/dd/yyyy')}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#334155] font-medium">
+                                                            {event.event_name}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#64748b]">
+                                                            {event.date_title || ''}
+                                                        </td>
+                                                    </tr>
                                                 );
                                             } catch (err) {
                                                 // If date parsing fails, show as quantity event
