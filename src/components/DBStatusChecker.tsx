@@ -18,8 +18,8 @@ export default function DBStatusChecker() {
   });
 
   const wakeUpDB = async () => {
-    setDbStatus(prev => ({ 
-      ...prev, 
+    setDbStatus(prev => ({
+      ...prev,
       isChecking: true,
       message: 'Waking up database. This may take 10-30 seconds...'
     }));
@@ -54,23 +54,26 @@ export default function DBStatusChecker() {
   };
 
   const checkDBStatus = async () => {
-    setDbStatus(prev => ({ ...prev, isChecking: true }));
-
+    // Perform silent check - don't show loading state yet
     try {
       const response = await fetch('/api/db-health');
       const data = await response.json();
 
-      setDbStatus({
-        isHealthy: data.isHealthy,
-        isIdle: data.isIdle,
-        message: data.message,
-        isChecking: false,
-      });
+      if (!data.isHealthy || data.isIdle) {
+        // Only now do we update state to show the modal
+        setDbStatus({
+          isHealthy: data.isHealthy,
+          isIdle: data.isIdle,
+          message: data.message,
+          isChecking: false,
+        });
 
-      // If database is idle, automatically try to wake it up
-      if (data.isIdle) {
-        await wakeUpDB();
+        // If database is idle, automatically try to wake it up
+        if (data.isIdle) {
+          await wakeUpDB();
+        }
       }
+      // If healthy, do nothing (keep default healthy state)
     } catch {
       setDbStatus({
         isHealthy: false,
