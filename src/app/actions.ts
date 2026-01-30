@@ -704,3 +704,37 @@ export async function testEmailConfiguration(settings: {
         };
     }
 }
+
+export async function getAvailableEventDatesForRegistration(registrationId: string, year: string) {
+    return await db.getAvailableEventDatesForRegistration(registrationId, year);
+}
+
+export async function addManualRegistrationDates(registrationId: string, selections: { eventId: string, date: string }[], notes: string) {
+    const user = await getCurrentUser();
+    if (!user) {
+        return { success: false, error: 'User not authenticated' };
+    }
+
+    if (!notes || notes.trim() === '') {
+        return { success: false, error: 'Notes are required' };
+    }
+
+    try {
+        for (const selection of selections) {
+            await db.createRegistrationDate({
+                id: Math.random().toString(36).substring(2, 11),
+                registration_id: registrationId,
+                event_id: selection.eventId,
+                date: selection.date,
+                quantity: 1,
+                notes: notes,
+                created_by: user.id
+            });
+        }
+        revalidatePath('/admin/lookup');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error adding manual dates:', error);
+        return { success: false, error: error.message };
+    }
+}

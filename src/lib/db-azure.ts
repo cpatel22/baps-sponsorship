@@ -107,6 +107,9 @@ export interface RegistrationDate {
   event_id: string;
   date: string | null;
   quantity: number;
+  notes?: string | null;
+  created_at?: Date | null;
+  created_by?: string | null;
 }
 
 export interface User {
@@ -267,10 +270,43 @@ class Database {
       .input('eventId', sql.NVarChar(50), data.event_id)
       .input('date', sql.NVarChar(50), data.date)
       .input('quantity', sql.Int, data.quantity)
+      .input('notes', sql.NVarChar(sql.MAX), data.notes || null)
+      .input('createdBy', sql.NVarChar(50), data.created_by || null)
       .query(`
-        INSERT INTO dbo.registration_dates (id, registration_id, event_id, date, quantity)
-        VALUES (@id, @registrationId, @eventId, @date, @quantity)
+        INSERT INTO dbo.registration_dates (id, registration_id, event_id, date, quantity, notes, created_at, created_by)
+        VALUES (@id, @registrationId, @eventId, @date, @quantity, @notes, GETUTCDATE(), @createdBy)
       `);
+  }
+
+  async getAvailableEventDatesForRegistration(registrationId: string, year: string): Promise<any[]> {
+    const pool = await getPool();
+    const today = new Date().toISOString().split('T')[0];
+    const result = await pool.request()
+      .input('registrationId', sql.NVarChar(50), registrationId)
+      .input('year', sql.NVarChar(10), `%${year}%`)
+      .input('today', sql.NVarChar(50), today)
+      .query(`
+        SELECT 
+          ed.id,
+          ed.event_id,
+          e.name as event_name,
+          ed.date,
+          ed.title as date_title,
+          e.individualCost as price
+        FROM dbo.event_dates ed
+        JOIN dbo.events e ON ed.event_id = e.id
+        WHERE 
+          ed.date LIKE @year
+          AND ed.date >= @today
+          AND NOT EXISTS (
+            SELECT 1 FROM dbo.registration_dates rd 
+            WHERE rd.event_id = ed.event_id 
+            AND rd.date = ed.date 
+            AND rd.registration_id = @registrationId
+          )
+        ORDER BY ed.date ASC
+      `);
+    return result.recordset;
   }
 
   // Users

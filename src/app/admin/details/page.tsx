@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails, getRegistrationsByYear } from '@/app/actions';
+import { getRegistrations, getCurrentUser, sendEmailReminder, getRegistrationEventsWithDetails, getRegistrationsByYear, getAvailableEventDatesForRegistration, addManualRegistrationDates } from '@/app/actions';
 import { format } from 'date-fns';
-import { Mail, Eye, X } from 'lucide-react';
+import { Mail, Eye, X, Plus, Check, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 // DataTables types
@@ -25,6 +25,15 @@ export default function Lookup() {
     const [viewingRegistration, setViewingRegistration] = useState<any | null>(null);
     const [viewedEvents, setViewedEvents] = useState<any[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
+
+    // Add Manual Event Modal State
+    const [addingToRegistration, setAddingToRegistration] = useState<any | null>(null);
+    const [availableDates, setAvailableDates] = useState<any[]>([]);
+    const [selectedManualDates, setSelectedManualDates] = useState<Set<string>>(new Set());
+    const [manualNotes, setManualNotes] = useState('');
+    const [loadingAvailable, setLoadingAvailable] = useState(false);
+    const [savingManual, setSavingManual] = useState(false);
+    const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
     const tableRef = useRef<HTMLTableElement>(null);
     const dataTableRef = useRef<any>(null);
@@ -234,6 +243,58 @@ export default function Lookup() {
         setSelectedUsers(newSelected);
     };
 
+    const handleStartAddEvent = async (reg: any) => {
+        setAddingToRegistration(reg);
+        setLoadingAvailable(true);
+        setSelectedManualDates(new Set());
+        setExpandedMonths(new Set());
+        setManualNotes('');
+        try {
+            const dates = await getAvailableEventDatesForRegistration(reg.id, selectedYear.toString());
+            setAvailableDates(dates);
+        } catch (error) {
+            console.error('Error loading available dates:', error);
+            setAvailableDates([]);
+        } finally {
+            setLoadingAvailable(false);
+        }
+    };
+
+    const handleSaveManualEvents = async () => {
+        if (!addingToRegistration || selectedManualDates.size === 0) return;
+        if (!manualNotes.trim()) {
+            alert('Notes are required.');
+            return;
+        }
+
+        setSavingManual(true);
+        try {
+            // Convert set of "eventId|date" to array of objects
+            const selections = Array.from(selectedManualDates).map(str => {
+                const [eventId, date] = str.split('|');
+                return { eventId, date };
+            });
+
+            const result = await addManualRegistrationDates(addingToRegistration.id, selections, manualNotes);
+            if (result.success) {
+                setAddingToRegistration(null);
+                setAvailableDates([]);
+                setSelectedManualDates(new Set());
+                setExpandedMonths(new Set());
+                setManualNotes('');
+                // Refresh data
+                loadAll();
+            } else {
+                alert('Failed to save events: ' + result.error);
+            }
+        } catch (error) {
+            console.error('Error saving manual events:', error);
+            alert('An unexpected error occurred.');
+        } finally {
+            setSavingManual(false);
+        }
+    };
+
     return (
         <div className="container min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#e0f2fe] py-12">
             <header className="mb-10 text-center">
@@ -245,7 +306,7 @@ export default function Lookup() {
                 {/* Year Filter */}
                 <div className="flex justify-end px-4">
                     <div className="relative flex items-center gap-3">
-                       <label className="text-[#475569] font-semibold text-base hidden">Year:</label>
+                        <label className="text-[#475569] font-semibold text-base hidden">Year:</label>
                         <select
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
@@ -256,10 +317,10 @@ export default function Lookup() {
                                     {year}
                                 </option>
                             ))}
-                        </select>                        
+                        </select>
                     </div>
                 </div>
-<hr className="mt-2"/>
+                <hr className="mt-2" />
                 {/* DataTable */}
                 <div
                     className="bg-white rounded-3xl shadow-xl border border-[#e2e8f0] overflow-hidden"
@@ -342,13 +403,25 @@ export default function Lookup() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-4">
-                                                    <button
-                                                        data-userid={reg.id}
-                                                        className="view-details-btn p-2 text-[#3b82f6] hover:bg-[#eff6ff] rounded-lg transition-colors"
-                                                        title="View Details"
-                                                    >
-                                                        <Eye size={20} className="pointer-events-none" />
-                                                    </button>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            data-userid={reg.id}
+                                                            className="view-details-btn p-2 text-[#3b82f6] hover:bg-[#eff6ff] rounded-lg transition-colors"
+                                                            title="View Details"
+                                                        >
+                                                            <Eye size={20} className="pointer-events-none" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleStartAddEvent(reg);
+                                                            }}
+                                                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                            title="Add Manual Event"
+                                                        >
+                                                            <Plus size={20} />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -428,7 +501,7 @@ export default function Lookup() {
                                                     </tr>
                                                 );
                                             }
-                                            
+
                                             // For events with date selection, display dates
                                             try {
                                                 // Parse date as local date to avoid timezone issues
@@ -441,24 +514,24 @@ export default function Lookup() {
                                                     throw new Error('Invalid date values');
                                                 }
                                                 const localDate = new Date(year, month - 1, day);
-                                                
+
                                                 // Check if date is valid
                                                 if (isNaN(localDate.getTime())) {
                                                     throw new Error('Invalid date');
                                                 }
-                                                
+
                                                 return (
-                                                <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
-                                                    <td className="py-3 px-4 text-[#1e293b]" data-order={localDate.getTime()}>
-                                                        {format(localDate, 'MM/dd/yyyy')}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-[#334155] font-medium">
-                                                        {event.event_name}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-[#64748b]">
-                                                        {event.date_title || ''}
-                                                    </td>
-                                                </tr>
+                                                    <tr key={index} className="border-b border-[#f1f5f9] hover:bg-[#f8fafc]">
+                                                        <td className="py-3 px-4 text-[#1e293b]" data-order={localDate.getTime()}>
+                                                            {format(localDate, 'MM/dd/yyyy')}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#334155] font-medium">
+                                                            {event.event_name}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[#64748b]">
+                                                            {event.date_title || ''}
+                                                        </td>
+                                                    </tr>
                                                 );
                                             } catch (err) {
                                                 // If date parsing fails, show as quantity event
@@ -484,6 +557,195 @@ export default function Lookup() {
                                     No events found for this registration.
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Add Manual Event Modal */}
+            {addingToRegistration && typeof document !== 'undefined' && createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}
+                >
+                    <div
+                        className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col relative"
+                        style={{ backgroundColor: 'white', display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '48rem', maxHeight: '90vh', borderRadius: '1.5rem', overflow: 'hidden', position: 'relative' }}
+                    >
+                        {/* Header */}
+                        <div
+                            className="px-8 pt-8 pb-4 flex justify-between items-start bg-white shrink-0"
+                            style={{ padding: '2rem 2rem 1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', backgroundColor: 'white', flexShrink: 0 }}
+                        >
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800">Add Events</h3>
+                                <p className="text-slate-500 mt-1 font-medium">
+                                    {addingToRegistration.first_name} {addingToRegistration.spouse_first_name} {addingToRegistration.last_name} <span className="text-slate-400">|</span> {selectedYear}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setAddingToRegistration(null)}
+                                className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-slate-600"
+                                aria-label="Close modal"
+                            >
+                                <X size={20} className="stroke-[2.5]" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div
+                            className="px-8 py-2 overflow-y-auto flex-1 custom-scrollbar"
+                            style={{ padding: '0.5rem 2rem', overflowY: 'auto', flex: '1 1 auto', display: 'flex', flexDirection: 'column' }}
+                        >
+                            {loadingAvailable ? (
+                                <div className="py-20 text-center text-slate-400" style={{ padding: '5rem 0', textAlign: 'center', color: '#94a3b8' }}>
+                                    <Loader2 className="animate-spin h-10 w-10 mx-auto mb-3 text-blue-500" style={{ height: '2.5rem', width: '2.5rem', margin: '0 auto 0.75rem auto', color: '#3b82f6' }} />
+                                    Loading available events...
+                                </div>
+                            ) : availableDates.length === 0 ? (
+                                <div className="text-center py-20 bg-slate-50 rounded-2xl border border-dashed border-slate-200" style={{ textAlign: 'center', padding: '5rem 0', backgroundColor: '#f8fafc', borderRadius: '1rem', border: '1px dashed #e2e8f0' }}>
+                                    <p className="text-slate-500 font-medium" style={{ color: '#64748b', fontWeight: 500 }}>No available events found for {selectedYear}.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                    {/* Month Groups */}
+                                    <div className="space-y-3" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {(() => {
+                                            const months = Array.from(new Set(availableDates.map(d => d.date.substring(0, 7)))).sort();
+
+                                            return months.map(month => {
+                                                const monthDates = availableDates.filter(d => d.date.startsWith(month));
+                                                // Create date with time to avoid timezone shift
+                                                const monthLabel = format(new Date(month + '-01T12:00:00'), 'MMM yyyy');
+                                                const isExpanded = expandedMonths.has(month);
+                                                const selectedCount = monthDates.filter(d => selectedManualDates.has(`${d.event_id}|${d.date}`)).length;
+
+                                                return (
+                                                    <div
+                                                        key={month}
+                                                        className={`border transition-all duration-200 rounded-xl overflow-hidden ${isExpanded ? 'border-blue-200 shadow-sm ring-1 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}`}
+                                                    >
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const newExpanded = new Set(expandedMonths);
+                                                                if (isExpanded) newExpanded.delete(month);
+                                                                else newExpanded.add(month);
+                                                                setExpandedMonths(newExpanded);
+                                                            }}
+                                                            className={`w-full flex items-center justify-between p-4 transition-colors ${isExpanded ? 'bg-blue-50/50' : 'bg-white hover:bg-slate-50'}`}
+                                                            type="button"
+                                                            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                                                        >
+                                                            <div className="flex items-center font-bold text-slate-700 text-lg" style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', color: '#334155', fontSize: '1.125rem' }}>
+                                                                <div className={`mr-3 p-1 rounded-lg transition-transform duration-200 ${isExpanded ? 'bg-blue-200/50 text-blue-700 rotate-180' : 'bg-slate-100 text-slate-500'}`} style={{ marginRight: '0.75rem', padding: '0.25rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                    <ChevronDown size={18} style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                                                </div>
+                                                                {monthLabel}
+                                                                {selectedCount > 0 && (
+                                                                    <span className="ml-3 bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm" style={{ marginLeft: '0.75rem', backgroundColor: '#2563eb', color: 'white', fontSize: '0.75rem', fontWeight: 'bold', padding: '0.25rem 0.625rem', borderRadius: '9999px' }}>
+                                                                        {selectedCount} events
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-sm font-medium text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-100 shadow-sm" style={{ fontSize: '0.875rem', fontWeight: 500, color: '#94a3b8', backgroundColor: 'white', padding: '0.25rem 0.5rem', borderRadius: '0.375rem', border: '1px solid #f1f5f9' }}>
+                                                                {monthDates.length} options
+                                                            </span>
+                                                        </button>
+
+                                                        {isExpanded && (
+                                                            <div className="p-2 bg-white border-t border-blue-100/50" style={{ padding: '0.5rem', backgroundColor: 'white', borderTop: '1px solid rgba(219, 234, 254, 0.5)' }}>
+                                                                <div className="grid grid-cols-1 gap-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(1, minmax(0, 1fr))', gap: '0.25rem' }}>
+                                                                    {monthDates.map(date => (
+                                                                        <div
+                                                                            key={`${date.event_id}|${date.date}`}
+                                                                            onClick={() => {
+                                                                                const val = `${date.event_id}|${date.date}`;
+                                                                                const newSet = new Set(selectedManualDates);
+                                                                                if (selectedManualDates.has(val)) newSet.delete(val);
+                                                                                else newSet.add(val);
+                                                                                setSelectedManualDates(newSet);
+                                                                            }}
+                                                                            className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all ${selectedManualDates.has(`${date.event_id}|${date.date}`) ? 'bg-blue-50 border border-blue-100' : 'hover:bg-slate-50 border border-transparent'}`}
+                                                                            style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer', border: selectedManualDates.has(`${date.event_id}|${date.date}`) ? '1px solid #dbeafe' : '1px solid transparent', backgroundColor: selectedManualDates.has(`${date.event_id}|${date.date}`) ? '#eff6ff' : 'transparent' }}
+                                                                        >
+                                                                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedManualDates.has(`${date.event_id}|${date.date}`) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`} style={{ width: '1.25rem', height: '1.25rem', borderRadius: '0.25rem', border: selectedManualDates.has(`${date.event_id}|${date.date}`) ? '1px solid #2563eb' : '1px solid #cbd5e1', backgroundColor: selectedManualDates.has(`${date.event_id}|${date.date}`) ? '#2563eb' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                                {selectedManualDates.has(`${date.event_id}|${date.date}`) && <Check size={12} className="text-white stroke-[3]" style={{ color: 'white' }} />}
+                                                                            </div>
+                                                                            <div className="flex-1" style={{ flex: '1 1 0%' }}>
+                                                                                <div className="font-semibold text-slate-700" style={{ fontWeight: 600, color: '#334155' }}>
+                                                                                    {date.event_name}
+                                                                                </div>
+                                                                                <div className="text-sm text-slate-500" style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                                                                                    {format(new Date(date.date + 'T12:00:00'), 'EEEE, MMMM do')}
+                                                                                    {date.date_title && <span className="ml-2 text-blue-600 font-medium" style={{ marginLeft: '0.5rem', color: '#2563eb', fontWeight: 500 }}>— {date.date_title}</span>}
+                                                                                </div>
+                                                                            </div>
+                                                                            {date.price !== undefined && (
+                                                                                <div className="text-sm font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded" style={{ fontSize: '0.875rem', fontWeight: 600, color: '#334155', backgroundColor: '#f1f5f9', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>
+                                                                                    ${date.price.toLocaleString()}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+
+                                    <div className="pt-2" style={{ paddingTop: '0.5rem' }}>
+                                        <div className="flex justify-between items-center mb-2" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                            <label className="block text-sm font-bold text-slate-700" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 700, color: '#334155' }}>
+                                                Notes <span className="text-red-500" style={{ color: '#ef4444' }}>*</span>
+                                            </label>
+                                            {selectedManualDates.size > 0 && (
+                                                <div className="text-sm font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100" style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1d4ed8', backgroundColor: '#eff6ff', padding: '0.375rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #dbeafe' }}>
+                                                    Total: ${Array.from(selectedManualDates).reduce((sum, key) => {
+                                                        const [eventId, dateStr] = key.split('|');
+                                                        const eventDate = availableDates.find(d => d.event_id === eventId && d.date === dateStr);
+                                                        return sum + (eventDate?.price || 0);
+                                                    }, 0).toLocaleString()}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <textarea
+                                            value={manualNotes}
+                                            onChange={(e) => setManualNotes(e.target.value)}
+                                            className="w-full rounded-xl border-slate-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 min-h-[100px] p-4 text-base resize-none bg-slate-50 focus:bg-white transition-colors"
+                                            placeholder="Please provide a reason for this manual addition..."
+                                            style={{ width: '100%', borderRadius: '0.75rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', minHeight: '100px', padding: '1rem', fontSize: '1rem', resize: 'none', backgroundColor: manualNotes ? 'white' : '#f8fafc' }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div
+                            className="p-8 pt-4 bg-white flex justify-end gap-3 shrink-0"
+                            style={{ padding: '1rem 2rem 2rem 2rem', backgroundColor: 'white', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', flexShrink: 0 }}
+                        >
+                            <button
+                                onClick={() => setAddingToRegistration(null)}
+                                className="px-5 py-2.5 text-slate-600 hover:text-slate-900 font-semibold bg-white border border-slate-200 hover:border-slate-300 rounded-xl transition-all"
+                                style={{ padding: '0.625rem 1.25rem', color: '#475569', fontWeight: 600, backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '0.75rem', cursor: 'pointer' }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveManualEvents}
+                                disabled={savingManual || selectedManualDates.size === 0 || !manualNotes.trim()}
+                                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02]"
+                                style={{ padding: '0.625rem 1.5rem', backgroundColor: '#2563eb', color: 'white', borderRadius: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 10px 15px -3px rgba(37, 99, 235, 0.2)', border: 'none', cursor: savingManual || selectedManualDates.size === 0 || !manualNotes.trim() ? 'not-allowed' : 'pointer', opacity: savingManual || selectedManualDates.size === 0 || !manualNotes.trim() ? 0.5 : 1 }}
+                            >
+                                {savingManual ? <Loader2 className="animate-spin h-5 w-5" /> : <Check size={20} />}
+                                Save Events
+                            </button>
                         </div>
                     </div>
                 </div>,
