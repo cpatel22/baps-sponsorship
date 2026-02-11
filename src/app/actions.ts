@@ -88,16 +88,16 @@ export async function registerSponsorship(formData: any, selectedDates: { [event
 
     // Get all events to check dateSelectionRequired
     const allEvents = await db.getEvents();
-    
+
     for (const eventId in selectedDates) {
         const event = allEvents.find(e => e.id === eventId);
         const dates = selectedDates[eventId];
-        
+
         // If event doesn't require date selection, store as quantity only
         if (event && event.dateSelectionRequired === false) {
             const step3Limit = formData.step3Limits?.[eventId];
             const quantity = step3Limit === 'ALL' ? -1 : (typeof step3Limit === 'number' ? step3Limit : dates.length);
-            
+
             await db.createRegistrationDate({
                 id: Math.random().toString(36).substring(2, 11),
                 registration_id: registrationId,
@@ -141,7 +141,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
 
     // Get events data
     const events = await db.getEvents();
-    
+
     // Get registration dates with event details
     const regDates = await db.getRegistrationEventsWithDetails(registrationId);
 
@@ -157,23 +157,23 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
     // Separate plan selections and individual selections based on formData
     const planSelections: { [eventId: string]: any[] } = {};
     const individualSelections: { [eventId: string]: any[] } = {};
-    
+
     // Parse the sponsorship data from formData if available
     const step2Data = formData.step2Selections || {};
     const step3Data = formData.step3Limits || {};
-    
+
     // Categorize selections
     for (const eventId in eventGroups) {
         const eventDates = eventGroups[eventId];
         const step2Dates = step2Data[eventId] || [];
-        
+
         planSelections[eventId] = eventDates.filter((ed: any) => step2Dates.includes(ed.date));
         individualSelections[eventId] = eventDates.filter((ed: any) => !step2Dates.includes(ed.date));
     }
 
     // Calculate grand total
     let grandTotal = 0;
-    
+
     // Add plan price
     const planPrices: { [key: string]: number } = {
         'silver': 1751, 'gold': 2501, 'platinum': 3501,
@@ -188,7 +188,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
     for (const event of events) {
         const eventId = event.id;
         const limit = step3Data[eventId];
-        
+
         if (limit && limit !== 0) {
             const isAll = limit === 'ALL';
             const cost = isAll ? (event.allCost || 0) : (limit as number) * (event.individualCost || 0);
@@ -227,7 +227,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
             'all_samaiya': 'Annual Grand Sponsorships - All Samaiya',
             'all_sabha_samaiya': 'Annual Grand Sponsorships - All Weekly Satsang Sabha & Samaiya'
         };
-        
+
         emailBody += `
             <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
                 <h3 style="color: #1e293b; margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">Sponsorship Plan</h3>
@@ -250,7 +250,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
             if (planSelections[eventId].length === 0) continue;
             const eventDates = planSelections[eventId];
             const eventName = eventDates[0].event_name;
-            
+
             emailBody += `
                 <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #cbd5e1;">
                     <p style="margin: 0 0 8px 0; font-weight: 600; font-size: 16px;">${eventName}</p>
@@ -268,10 +268,10 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
                     `;
                 } else {
                     // For events with dates, show date
-                    const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
+                    const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
                     });
                     emailBody += `
                         <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
@@ -295,7 +295,7 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
 
     // Add individual event selections
     const hasIndividualSelections = Object.keys(step3Data).some(eid => step3Data[eid] && step3Data[eid] !== 0);
-    
+
     if (hasIndividualSelections) {
         emailBody += `
             <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
@@ -306,11 +306,11 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
             const eventId = event.id;
             const limit = step3Data[eventId];
             if (!limit || limit === 0) continue;
-            
+
             const isAll = limit === 'ALL';
             const eventDates = individualSelections[eventId] || [];
             const cost = individualCosts[eventId];
-            
+
             emailBody += `
                 <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #cbd5e1;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
@@ -339,10 +339,10 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
                         `;
                     } else {
                         // For events with dates, show date
-                        const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'short', 
-                            day: 'numeric' 
+                        const dateStr = new Date(ed.date + 'T12:00:00').toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
                         });
                         emailBody += `
                             <span style="display: inline-block; margin: 3px 5px 3px 0; padding: 4px 8px; background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 15px; font-size: 12px;">
@@ -381,10 +381,10 @@ async function sendRegistrationConfirmationEmail(registrationId: string, formDat
 
     try {
         const nodemailer = await import('nodemailer');
-        
+
         const port = emailSettings.connection_security === 'SSL' ? emailSettings.smtp_port_ssl : emailSettings.smtp_port_tls;
         const secure = emailSettings.connection_security === 'SSL';
-        
+
         const transporter = nodemailer.default.createTransport({
             host: emailSettings.smtp_server,
             port: port,
@@ -488,11 +488,11 @@ export async function sendEmailReminder(userIds: string[], templateId: string) {
     try {
         // Import nodemailer
         const nodemailer = await import('nodemailer');
-        
+
         // Determine port and security based on settings
         const port = emailSettings.connection_security === 'SSL' ? emailSettings.smtp_port_ssl : emailSettings.smtp_port_tls;
         const secure = emailSettings.connection_security === 'SSL';
-        
+
         // Create transporter
         const transporter = nodemailer.default.createTransport({
             host: emailSettings.smtp_server,
@@ -547,8 +547,8 @@ export async function sendEmailReminder(userIds: string[], templateId: string) {
         }
 
         if (failedEmails.length > 0) {
-            return { 
-                success: true, 
+            return {
+                success: true,
                 count: successCount,
                 warning: `${failedEmails.length} email(s) failed to send: ${failedEmails.join(', ')}`
             };
@@ -557,8 +557,8 @@ export async function sendEmailReminder(userIds: string[], templateId: string) {
         return { success: true, count: successCount };
     } catch (error: any) {
         console.error('Email sending error:', error);
-        return { 
-            success: false, 
+        return {
+            success: false,
             error: `Failed to send emails: ${error.message}`
         };
     }
@@ -581,7 +581,8 @@ export async function saveEmailTemplate(id: string | null, name: string, toField
             cc_field: ccField,
             bcc_field: bccField,
             subject: subject,
-            body: body
+            body: body,
+            is_editable: true
         });
         revalidatePath('/admin/settings');
         return { success: true, id };
@@ -595,7 +596,8 @@ export async function saveEmailTemplate(id: string | null, name: string, toField
             cc_field: ccField,
             bcc_field: bccField,
             subject: subject,
-            body: body
+            body: body,
+            is_editable: true
         });
         revalidatePath('/admin/settings');
         return { success: true, id: newId };
@@ -631,7 +633,7 @@ export async function saveEmailSettings(settings: {
         connection_security: settings.connectionSecurity,
         reply_to_email: settings.replyToEmail
     });
-    
+
     revalidatePath('/admin/settings');
     return { success: true };
 }
@@ -650,11 +652,11 @@ export async function testEmailConfiguration(settings: {
     try {
         // Import nodemailer dynamically
         const nodemailer = await import('nodemailer');
-        
+
         // Determine which port to use based on connection security
         const port = settings.connectionSecurity === 'SSL' ? settings.smtpPortSSL : settings.smtpPortTLS;
         const secure = settings.connectionSecurity === 'SSL'; // true for SSL (465), false for TLS (587)
-        
+
         // Create transporter
         const transporter = nodemailer.default.createTransport({
             host: settings.smtpServer,
@@ -688,17 +690,51 @@ export async function testEmailConfiguration(settings: {
             `
         });
 
-        return { 
-            success: true, 
+        return {
+            success: true,
             message: 'Test email sent successfully! Please check the inbox.',
-            messageId: info.messageId 
+            messageId: info.messageId
         };
     } catch (error: any) {
         console.error('Email test failed:', error);
-        return { 
-            success: false, 
+        return {
+            success: false,
             message: `Failed to send test email: ${error.message || 'Unknown error'}`,
-            error: error.message 
+            error: error.message
         };
+    }
+}
+
+export async function getAvailableEventDatesForRegistration(registrationId: string, year: string) {
+    return await db.getAvailableEventDatesForRegistration(registrationId, year);
+}
+
+export async function addManualRegistrationDates(registrationId: string, selections: { eventId: string, date: string }[], notes: string) {
+    const user = await getCurrentUser();
+    if (!user) {
+        return { success: false, error: 'User not authenticated' };
+    }
+
+    if (!notes || notes.trim() === '') {
+        return { success: false, error: 'Notes are required' };
+    }
+
+    try {
+        for (const selection of selections) {
+            await db.createRegistrationDate({
+                id: Math.random().toString(36).substring(2, 11),
+                registration_id: registrationId,
+                event_id: selection.eventId,
+                date: selection.date,
+                quantity: 1,
+                notes: notes,
+                created_by: user.id
+            });
+        }
+        revalidatePath('/admin/lookup');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error adding manual dates:', error);
+        return { success: false, error: error.message };
     }
 }

@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getAllUsers, updateUser, addUser, deleteUser, getCurrentUser } from '@/app/actions';
-import { User, Shield, Mail, Key, Trash2, Plus, X, Save, Settings } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { User, Shield, Mail, Trash2, Plus, X, Save, Settings } from 'lucide-react';
 
 export default function UserManagement() {
     const [users, setUsers] = useState<any[]>([]);
@@ -11,17 +10,6 @@ export default function UserManagement() {
     const [editingUser, setEditingUser] = useState<any>(null);
     const [showAddForm, setShowAddForm] = useState(false);
     const [loading, setLoading] = useState(true);
-    const router = useRouter();
-
-    useEffect(() => {
-        async function checkAuth() {
-            const user = await getCurrentUser();
-            if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-                router.push('/');
-            }
-        }
-        checkAuth();
-    }, []);
 
     useEffect(() => {
         loadData();
@@ -68,7 +56,7 @@ export default function UserManagement() {
         <div className="card">
             <header className="page-header flex justify-between items-center">
                 <div>
-                    <h1 className="page-title">User Management</h1>
+                    <h1 className="page-title hidden">User Management</h1>
                     <p className="page-description hidden">Manage access, roles, and security settings for the admin portal.</p>
                 </div>
                 <button onClick={() => setShowAddForm(true)} className="btn-primary flex items-center gap-2">

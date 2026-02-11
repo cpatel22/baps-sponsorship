@@ -148,7 +148,7 @@ button:disabled {
   background: var(--card);
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  padding: 1.5rem;
+  padding: 1rem;
   box-shadow: var(--shadow);
 }
 
@@ -506,6 +506,7 @@ table.dataTable.no-footer {
     opacity: 0;
     transform: translateY(-20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);

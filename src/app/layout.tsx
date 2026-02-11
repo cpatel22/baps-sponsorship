@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getCurrentUser, logout } from "./actions";
 import { User, LogOut, Settings } from "lucide-react";
 import NavBar from "@/components/NavBar";
+import DBStatusChecker from "@/components/DBStatusChecker";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,6 +24,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        <DBStatusChecker />
         <NavBar user={user} />
         <main>
           {children}

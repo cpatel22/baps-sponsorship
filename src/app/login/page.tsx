@@ -19,7 +19,7 @@ export default function LoginPage() {
         const result = await login(formData);
 
         if (result.success) {
-            router.push('/admin/eventMaster');
+            router.push('/admin/lookup');
             router.refresh();
         } else {
             setError(result.error || 'Login failed');

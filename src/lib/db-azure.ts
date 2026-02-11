@@ -7,11 +7,12 @@ const config: sql.config = {
   user: process.env.AZURE_SQL_USER || '',
   password: process.env.AZURE_SQL_PASSWORD || '',
   port: parseInt(process.env.AZURE_SQL_PORT || '1433'),
+  connectionTimeout: 60000, // Wait up to 60s for connection (important for serverless wake-up)
   options: {
     encrypt: true, // Required for Azure
     trustServerCertificate: false,
     enableArithAbort: true,
-    requestTimeout: 30000,
+    requestTimeout: 60000, // Increase request timeout to 60s
   },
   pool: {
     max: 10,
@@ -22,21 +23,56 @@ const config: sql.config = {
 
 // Connection pool
 let pool: sql.ConnectionPool | null = null;
+let connectionPromise: Promise<sql.ConnectionPool> | null = null;
 
 // Get or create connection pool
 async function getPool(): Promise<sql.ConnectionPool> {
+  // If pool is ready, return it immediately
   if (pool && pool.connected) {
     return pool;
   }
 
-  try {
-    pool = await new sql.ConnectionPool(config).connect();
-    console.log('Connected to Azure SQL Database');
-    return pool;
-  } catch (err) {
-    console.error('Database connection failed:', err);
-    throw err;
+  // If a connection attempt is already in progress, wait for it
+  if (connectionPromise) {
+    return connectionPromise;
   }
+
+  // Start a new connection attempt
+  connectionPromise = (async () => {
+    try {
+      // If pool exists but not connected, close it first
+      if (pool) {
+        try {
+          await pool.close();
+        } catch (closeErr) {
+          console.warn('Error closing existing pool:', closeErr);
+        }
+        pool = null;
+      }
+
+      const newPool = await new sql.ConnectionPool(config).connect();
+      pool = newPool;
+      console.log('Connected to Azure SQL Database');
+      return newPool;
+    } catch (err) {
+      console.error('Database connection failed:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+
+      // Provide more specific error messages for common issues
+      if (errorMessage.includes('timeout')) {
+        throw new Error('Database connection timeout - database may be idle or sleeping');
+      } else if (errorMessage.includes('ECONNREFUSED')) {
+        throw new Error('Database connection refused - database may be starting up');
+      } else {
+        throw err;
+      }
+    } finally {
+      // Clear the promise so future calls can try again if needed
+      connectionPromise = null;
+    }
+  })();
+
+  return connectionPromise;
 }
 
 // Database operations interface
@@ -74,6 +110,9 @@ export interface RegistrationDate {
   event_id: string;
   date: string | null;
   quantity: number;
+  notes?: string | null;
+  created_at?: Date | null;
+  created_by?: string | null;
 }
 
 export interface User {
@@ -95,6 +134,7 @@ export interface EmailTemplate {
   body: string;
   created_at: Date;
   updated_at: Date;
+  is_editable: boolean;
 }
 
 export interface EmailSettings {
@@ -233,10 +273,43 @@ class Database {
       .input('eventId', sql.NVarChar(50), data.event_id)
       .input('date', sql.NVarChar(50), data.date)
       .input('quantity', sql.Int, data.quantity)
+      .input('notes', sql.NVarChar(sql.MAX), data.notes || null)
+      .input('createdBy', sql.NVarChar(50), data.created_by || null)
       .query(`
-        INSERT INTO dbo.registration_dates (id, registration_id, event_id, date, quantity)
-        VALUES (@id, @registrationId, @eventId, @date, @quantity)
+        INSERT INTO dbo.registration_dates (id, registration_id, event_id, date, quantity, notes, created_at, created_by)
+        VALUES (@id, @registrationId, @eventId, @date, @quantity, @notes, GETUTCDATE(), @createdBy)
       `);
+  }
+
+  async getAvailableEventDatesForRegistration(registrationId: string, year: string): Promise<any[]> {
+    const pool = await getPool();
+    const today = new Date().toISOString().split('T')[0];
+    const result = await pool.request()
+      .input('registrationId', sql.NVarChar(50), registrationId)
+      .input('year', sql.NVarChar(10), `%${year}%`)
+      .input('today', sql.NVarChar(50), today)
+      .query(`
+        SELECT 
+          ed.id,
+          ed.event_id,
+          e.name as event_name,
+          ed.date,
+          ed.title as date_title,
+          e.individualCost as price
+        FROM dbo.event_dates ed
+        JOIN dbo.events e ON ed.event_id = e.id
+        WHERE 
+          ed.date LIKE @year
+          AND ed.date >= @today
+          AND NOT EXISTS (
+            SELECT 1 FROM dbo.registration_dates rd 
+            WHERE rd.event_id = ed.event_id 
+            AND rd.date = ed.date 
+            AND rd.registration_id = @registrationId
+          )
+        ORDER BY ed.date ASC
+      `);
+    return result.recordset;
   }
 
   // Users
@@ -324,7 +397,7 @@ class Database {
   async getEmailTemplates(): Promise<EmailTemplate[]> {
     const pool = await getPool();
     const result = await pool.request()
-      .query<EmailTemplate>('SELECT * FROM dbo.email_templates ORDER BY created_at DESC');
+      .query<EmailTemplate>('SELECT * FROM dbo.email_templates where is_editable<> 0 ORDER BY created_at DESC');
     return result.recordset;
   }
 
